@@ -1,0 +1,23 @@
+﻿Referenz;Wert;Bauform
+C1;470uF 50V;CP_Radial_D10.0mm_P5.00mm
+C3;100uF 25V;CP_Radial_D6.3mm_P2.50mm
+C4;100uF 25V;CP_Radial_D6.3mm_P2.50mm
+F1;1A T;Fuseholder_TR5_Littelfuse_No560_No460
+J1;24V Einspeisung;TerminalBlock_Phoenix_MKDS-1,5-5-5.08_1x05_P5.08mm_Horizontal
+J10;Display Versorgung/I2C;JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical
+J11;Display Ausgaenge;JST_XH_B6B-XH-A_1x06_P2.50mm_Vertical
+J12;Display Eingaenge;JST_XH_B6B-XH-A_1x06_P2.50mm_Vertical
+J2;Kolben A;TerminalBlock_Phoenix_MKDS-1,5-5-5.08_1x05_P5.08mm_Horizontal
+J20;LM2596 5V Eingang;SolderWire-0.5sqmm_1x02_P4.6mm_D0.9mm_OD2.1mm
+J21;LM2596 5V Ausgang;SolderWire-0.5sqmm_1x02_P4.6mm_D0.9mm_OD2.1mm
+J22;LM2596 12V Eingang;SolderWire-0.5sqmm_1x02_P4.6mm_D0.9mm_OD2.1mm
+J23;LM2596 12V Ausgang;SolderWire-0.5sqmm_1x02_P4.6mm_D0.9mm_OD2.1mm
+J3;Kolben B;TerminalBlock_Phoenix_MKDS-1,5-5-5.08_1x05_P5.08mm_Horizontal
+J6;Luefter Netzteil;Molex_KK-254_AE-6410-03A_1x03_P2.54mm_Vertical
+J7;Absaugung;TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal
+J8;DS18B20;JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical
+J9;Drehgeber;JST_XH_B5B-XH-A_1x05_P2.50mm_Vertical
+JP1;PE-GND;SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm
+Q101;IRF5305;TO-220-3_Vertical
+Q201;IRF5305;TO-220-3_Vertical
+U3;MCP9700-E/TO;TO-92_Inline_Wide

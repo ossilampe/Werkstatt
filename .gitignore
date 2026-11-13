@@ -1,0 +1,13 @@
+# KiCad / Freerouting Zwischenstaende
+*.kicad_prl
+*.lck
+*-backups/
+fp-info-cache
+*.dsn
+*.ses
+*.bak
+freerouting.log
+pcb/jlc/gerber/
+**/pcb/jlc/gerber/
+__pycache__/
+secrets.yaml
