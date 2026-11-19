@@ -1,0 +1,69 @@
+diff --git a/Core/Src/settings.c b/Core/Src/settings.c
+index e455801..a6c126c 100644
+--- a/Core/Src/settings.c
++++ b/Core/Src/settings.c
+@@ -212,6 +212,7 @@ uint8_t save_prevstate_debug, save_laststate_debug;
+ #endif
+ void updateTempData(bool force){
+   uint32_t CurrentTime = HAL_GetTick();
++  if(current_screen==NULL) return;                                    // T12-Loetstation: ohne GUI (UART-Fernsteuerung) nichts speichern
+   uint8_t scr_index=current_screen->index;
+ 
+   if(getIronCalibrationMode() || getSettings()->setupMode || scr_index == screen_debug)                                 // Don't update while calibration is in progress or in the debug screen
+diff --git a/Core/Src/user_main.c b/Core/Src/user_main.c
+index 709caf6..364ff22 100644
+--- a/Core/Src/user_main.c
++++ b/Core/Src/user_main.c
+@@ -20,6 +20,7 @@
+ #include "gui.h"
+ #include "screen.h"
+ #include "display_test.h"
++#include "uart_remote.h"                // T12-Loetstation: UART-Fernsteuerung
+ 
+ #if (__CORTEX_M >= 3)
+ #include "stm32f1xx_it.h"
+@@ -191,6 +192,14 @@ void InitAfterMCUConfiguration(void){
+     HAL_IWDG_Refresh(&hiwdg);
+   }
+ 
++#ifdef T12_UART_REMOTE
++    buzzer_init();
++    restoreSettings();
++    ADC_Init(&ADC_DEVICE);
++    ironInit(&READ_TIMER, &PWM_TIMER,PWM_CHANNEL);
++    uart_remote_init();                                                // OLED-Pads = UART zum ESP, kein Display, kein Drehknopf
++    uart_remote_boot_complete();
++#else
+ #if (defined DISPLAY_SPI || defined DISPLAY_I2C) && defined DISPLAY_DEVICE
+   lcd_init(&DISPLAY_DEVICE, &FILL_DMA);
+ #elif defined DISPLAY_SPI || defined DISPLAY_I2C
+@@ -224,6 +233,8 @@ void InitAfterMCUConfiguration(void){
+     RE_Init((RE_State_t *)&RE1_Data, ENC_L_GPIO_Port, ENC_L_Pin, ENC_R_GPIO_Port, ENC_R_Pin, ENC_SW_GPIO_Port, ENC_SW_Pin);
+     oled_init(&RE_Get,&RE1_Data);
+ 
++#endif
++
+ #ifdef RUN_DISPLAY_TEST
+     display_test();
+ #endif
+@@ -243,14 +254,20 @@ void mainCycle(void)
+ 
+   }
+ #endif
++#ifdef T12_UART_REMOTE
++  uart_remote_handle();                   // Befehle vom ESP, Statuszeilen
++#else
+   oled_handle();   // Handle oled drawing
+   updateTempData(normal_update);
++#endif
+ }
+ 
+ // Called from SysTick IRQ every 1mS
+ void Program_Handler(void) {
+   handle_buzzer();                                                    // Handle buzzer state
++#ifndef T12_UART_REMOTE
+   RE_Process(&RE1_Data);                                              // Handle Encoder
++#endif
+ #ifdef ENABLE_ADDON_FUME_EXTRACTOR
+   handleAddonFumeExtractor();
+ #endif

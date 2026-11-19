@@ -1,0 +1,12 @@
+# T12 Lötstation – Testdatei für die Spitzenprofile
+# Zum Ausprobieren in Home Assistant nach /config/www/t12_profile.yaml kopieren.
+# Die Werte sind absichtlich "krumm", damit man am Display sofort sieht,
+# dass das Profil übernommen wurde.
+#
+#   - Name, Temperatur 1, Temperatur 2, Temperatur 3
+#   Temperatur 1   = wird beim Auswählen als Solltemperatur gesetzt
+#   Temperatur 1-3 = liegen dann auf den drei Festwert-Tasten der Hauptseite
+
+- TEST 1, 250, 260, 270
+- TEST 2, 300, 310, 320
+- TEST 3, 355, 365, 375

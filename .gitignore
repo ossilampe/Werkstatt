@@ -11,3 +11,5 @@ pcb/jlc/gerber/
 **/pcb/jlc/gerber/
 __pycache__/
 secrets.yaml
+T12-Loetstation/modul/original-firmware/*.bin
+T12-Loetstation/modul/quellcode-deividalfa/

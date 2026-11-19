@@ -1,0 +1,1578 @@
+# =====================================================================
+#  T12 Lötstation – 1 Kolben, Waveshare ESP32-S3-Touch-LCD-3.5  (anzahl_kolben: "1")
+#  Je Kolben ein KSGER-v2-Modul (Ver21S) mit eigener UART-Firmware
+#  (Werkstatt/T12-Loetstation/modul/firmware-uart, Protokoll in uart_remote.c, ab v2 mit $CFG)
+#
+#  Modul A (OLED-Pads)      Waveshare-Leiste
+#    SCL (= Modul TX)  ->  GPIO18 (RX)
+#    SDA (= Modul RX)  <-  GPIO17 (TX)
+#  Modul B
+#    SCL (= Modul TX)  ->  GPIO39 (RX)
+#    SDA (= Modul RX)  <-  GPIO38 (TX)
+#  GND jeweils verbinden, VCC NICHT verbinden.
+#
+#  Drehgeber (ALPS STEC12E08): A -> GPIO40, B -> GPIO41, Taster -> GPIO42, C/Taster-GND -> GND
+#    drehen = Solltemperatur des gewählten Kolbens (5-°C-Schritte)
+#    kurz drücken = Kolben A/B wechseln (in Menüs: zurück), lang drücken = Menü
+#
+#  Lüfter (12 V, über AO3400 low-side, 25 kHz PWM):
+#    Netzteil-Lüfter  GPIO47     Absaugung (Cinch vorne)  GPIO48
+#  DS18B20 am Netzteil: GPIO21 (4,7 kΩ nach 3,3 V)
+#
+#  Ton: ES8311 + Lautsprecher des Displays, Ansagen als WAV in t12/sound (Windows-Stimme "Hedda")
+#
+#  Testseite (erste Version): W:\archive\t12-loetstation_2026-11-19_testseite.yaml
+# =====================================================================
+substitutions:
+  fw_version: "2026.11.20"
+  # 2 = zwei Kolben (Kacheln A und B), 1 = ein Kolben (eine breite Kachel, Modul B entfällt)
+  anzahl_kolben: "1"
+  # Adresse deines Home Assistant (für die Spitzenprofile in /config/www/t12_profile.yaml)
+  ha_url: "http://homeassistant.local:8123"
+
+esphome:
+  name: t12-loetstation
+  friendly_name: "T12 Lötstation"
+  includes:
+    - t12/t12.h
+  on_boot:
+    priority: -100
+    then:
+      - lambda: |-
+          for (lv_indev_t *i = lv_indev_get_next(nullptr); i != nullptr; i = lv_indev_get_next(i)) {
+            lv_timer_t *t = lv_indev_get_read_timer(i);
+            if (t != nullptr) lv_timer_set_period(t, 10);
+          }
+          id(codec).set_volume(id(laut) / 100.0f);
+          t12::anzahl = ${anzahl_kolben};
+          if (t12::anzahl == 1) {
+            t12::auswahl = 0;
+            lv_obj_add_flag(id(kachel_b), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_width(id(kachel_a), 464);
+            lv_obj_set_width(id(bar_a), 436);
+            lv_obj_add_flag(id(kb_a), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(kb_b), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(fw_spitze_b), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_width(id(fw_spitze_a), 464);
+          }
+      - delay: 3s
+      - script.execute: {id: sag, n: 0}
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  cpu_frequency: 240MHz
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  level: INFO
+
+api:
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+# ---------------------------------------------------------------------
+#  Display / Touch (wie Labornetzteil / Heizungs-Display)
+# ---------------------------------------------------------------------
+i2c:
+  - id: i2c_bus
+    sda: GPIO8
+    scl: GPIO7
+    frequency: 400kHz
+
+pca9554:
+  - id: p_c_a
+    address: 0x20
+    i2c_id: i2c_bus
+
+output:
+  - platform: ledc
+    pin: GPIO6
+    id: backlight_pwm
+    frequency: 2000 Hz
+  # Lüfter: 25 kHz PWM auf die AO3400-Gates
+  - platform: ledc
+    pin: GPIO47
+    id: pwm_netzteil
+    frequency: 25000 Hz
+  - platform: ledc
+    pin: GPIO48
+    id: pwm_absaugung
+    frequency: 25000 Hz
+
+light:
+  - platform: monochromatic
+    name: "Display Beleuchtung"
+    id: display_backlight
+    output: backlight_pwm
+    restore_mode: ALWAYS_ON
+    gamma_correct: 1.0
+
+spi:
+  id: display_spi
+  clk_pin: GPIO5
+  mosi_pin: GPIO1
+  miso_pin: GPIO2
+
+display:
+  - platform: mipi_spi
+    id: my_display
+    model: st7796
+    spi_id: display_spi
+    cs_pin:
+      pca9554: p_c_a
+      number: 2
+    dc_pin: GPIO3
+    reset_pin:
+      pca9554: p_c_a
+      number: 1
+    spi_mode: 1
+    data_rate: 40MHz
+    color_order: bgr
+    invert_colors: true
+    pixel_mode: 16bit
+    auto_clear_enabled: false
+    update_interval: never
+
+touchscreen:
+  - platform: ft63x6
+    id: my_touch
+    update_interval: 20ms
+    i2c_id: i2c_bus
+    on_touch:
+      - lambda: 'id(letzte_bedienung) = millis();'
+      - if:
+          condition:
+            lambda: 'return id(display_backlight).current_values.get_brightness() < 0.99f;'
+          then:
+            - light.turn_on: {id: display_backlight, brightness: 100%}
+
+# ---------------------------------------------------------------------
+#  Ton (ES8311 + Lautsprecher, wie Heizungs-Display)
+# ---------------------------------------------------------------------
+audio_dac:
+  - platform: es8311
+    id: codec
+    i2c_id: i2c_bus
+    address: 0x18
+
+i2s_audio:
+  - id: i2s_bus
+    i2s_lrclk_pin: GPIO15
+    i2s_bclk_pin: GPIO13
+    i2s_mclk_pin: GPIO12
+
+speaker:
+  - platform: i2s_audio
+    id: lautsprecher
+    i2s_audio_id: i2s_bus
+    dac_type: external
+    i2s_dout_pin: GPIO16
+    audio_dac: codec
+    sample_rate: 16000
+    bits_per_sample: 16bit
+    channel: mono
+    timeout: never
+
+media_player:
+  - platform: speaker
+    id: ansage
+    name: "Ansage"
+    volume_initial: 100%
+    announcement_pipeline:
+      speaker: lautsprecher
+      format: WAV
+      sample_rate: 16000
+      num_channels: 1
+    files:
+      - {id: snd_start, file: t12/sound/start.wav}
+      - {id: snd_a_bereit, file: t12/sound/a_bereit.wav}
+      - {id: snd_b_bereit, file: t12/sound/b_bereit.wav}
+      - {id: snd_a_standby, file: t12/sound/a_standby.wav}
+      - {id: snd_b_standby, file: t12/sound/b_standby.wav}
+      - {id: snd_a_schlaf, file: t12/sound/a_schlaf.wav}
+      - {id: snd_b_schlaf, file: t12/sound/b_schlaf.wav}
+      - {id: snd_a_spitze, file: t12/sound/a_spitze.wav}
+      - {id: snd_b_spitze, file: t12/sound/b_spitze.wav}
+      - {id: snd_a_fehler, file: t12/sound/a_fehler.wav}
+      - {id: snd_b_fehler, file: t12/sound/b_fehler.wav}
+      - {id: snd_a_verbindung, file: t12/sound/a_verbindung.wav}
+      - {id: snd_b_verbindung, file: t12/sound/b_verbindung.wav}
+      - {id: snd_a_kuehlt, file: t12/sound/a_kuehlt.wav}
+      - {id: snd_b_kuehlt, file: t12/sound/b_kuehlt.wav}
+      - {id: snd_gespeichert, file: t12/sound/gespeichert.wav}
+      - {id: snd_klick, file: t12/sound/klick.wav}
+      - {id: snd_ton_bereit, file: t12/sound/ton_bereit.wav}
+      - {id: snd_ton_fehler, file: t12/sound/ton_fehler.wav}
+
+switch:
+  # Verstärker (PA) über den Erweiterungs-Chip
+  - platform: gpio
+    id: verstaerker
+    pin:
+      pca9554: p_c_a
+      number: 7
+    restore_mode: ALWAYS_ON
+
+# ---------------------------------------------------------------------
+#  UART zu den Modulen
+# ---------------------------------------------------------------------
+uart:
+  - id: uart_a
+    tx_pin: GPIO17   # Leisten-Pin 16 -> Modul A Pad SDA
+    rx_pin: GPIO18   # Leisten-Pin 18 <- Modul A Pad SCL
+    baud_rate: 115200
+    rx_buffer_size: 512
+    debug:
+      direction: RX
+      dummy_receiver: true
+      after:
+        delimiter: "\n"
+      sequence:
+        - lambda: 't12::zeile(0, bytes);'
+  - id: uart_b
+    tx_pin: GPIO38   # -> Modul B Pad SDA
+    rx_pin: GPIO39   # <- Modul B Pad SCL
+    baud_rate: 115200
+    rx_buffer_size: 512
+    debug:
+      direction: RX
+      dummy_receiver: true
+      after:
+        delimiter: "\n"
+      sequence:
+        - lambda: 't12::zeile(1, bytes);'
+
+# ---------------------------------------------------------------------
+#  Spitzenprofile aus Home Assistant (/config/www/t12_profile.yaml)
+# ---------------------------------------------------------------------
+http_request:
+  verify_ssl: false
+  timeout: 5s
+
+# ---------------------------------------------------------------------
+#  DS18B20 am Netzteil
+# ---------------------------------------------------------------------
+one_wire:
+  - platform: gpio
+    pin: GPIO21
+
+globals:
+  # Solltemperaturen bleiben über Neustart erhalten, EIN/AUS nicht (immer AUS)
+  - {id: soll_a, type: int, restore_value: true, initial_value: '330'}
+  - {id: soll_b, type: int, restore_value: true, initial_value: '330'}
+  # Absaugung: Modus 0 Auto (Kolben in der Hand), 1 immer an, 2 aus
+  - {id: abs_modus, type: int, restore_value: true, initial_value: '0'}
+  - {id: abs_drehzahl, type: int, restore_value: true, initial_value: '60'}
+  - {id: abs_nachlauf, type: int, restore_value: true, initial_value: '10'}
+  # Spitzenprofile: an/aus, gewähltes Profil je Kolben (-1 = keins), Anzahl geladen
+  - {id: profile_an, type: bool, restore_value: true, initial_value: 'true'}
+  - {id: prof_a, type: int, restore_value: true, initial_value: '-1'}
+  - {id: prof_b, type: int, restore_value: true, initial_value: '-1'}
+  - {id: prof_anzahl, type: int, initial_value: '0'}
+  # letzte Bedienung (Touch/Drehgeber): Menüs springen nach 20 s zurück zur Hauptseite
+  - {id: letzte_bedienung, type: uint32_t, initial_value: '0'}
+  # Festwerte (Speichertasten) auf der Hauptseite (ohne Profil)
+  - {id: fw_1, type: int, restore_value: true, initial_value: '280'}
+  - {id: fw_2, type: int, restore_value: true, initial_value: '330'}
+  - {id: fw_3, type: int, restore_value: true, initial_value: '380'}
+  # Netzteil-Lüfter: aus unter Start, linear 30..100 % bis Voll
+  - {id: nt_start, type: int, restore_value: true, initial_value: '35'}
+  - {id: nt_voll, type: int, restore_value: true, initial_value: '50'}
+  # Ton
+  - {id: laut, type: int, restore_value: true, initial_value: '70'}
+  - {id: ton_an, type: bool, restore_value: true, initial_value: 'true'}
+  - {id: sprache_an, type: bool, restore_value: true, initial_value: 'true'}
+  - {id: ans_bereit, type: bool, restore_value: true, initial_value: 'true'}
+  - {id: ans_standby, type: bool, restore_value: true, initial_value: 'false'}
+  - {id: ans_fehler, type: bool, restore_value: true, initial_value: 'true'}
+  # aktueller Stand der Lüfter (für Anzeige)
+  - {id: nt_prozent, type: int, initial_value: '0'}
+  - {id: abs_prozent, type: int, initial_value: '0'}
+  - {id: abs_seit, type: uint32_t, initial_value: '0'}
+  - {id: nt_seit, type: uint32_t, initial_value: '0'}
+
+script:
+  - id: senden
+    then:
+      - lambda: |-
+          auto a = t12::befehl(0, id(soll_a)); id(uart_a).write_array(a.data(), a.size());
+          auto b = t12::befehl(1, id(soll_b)); id(uart_b).write_array(b.data(), b.size());
+  - id: an_modul
+    parameters:
+      i: int
+      cmd: string
+    then:
+      - lambda: |-
+          std::string s = cmd + "\n";
+          if (i == 0) id(uart_a).write_array((const uint8_t *) s.data(), s.size());
+          else id(uart_b).write_array((const uint8_t *) s.data(), s.size());
+  # Solltemperatur des gewählten Kolbens ändern
+  - id: soll_aendern
+    parameters:
+      delta: int
+      absolut: int
+    then:
+      - lambda: |-
+          int &s = (t12::auswahl == 0) ? id(soll_a) : id(soll_b);
+          int neu = absolut > 0 ? absolut : s + delta;
+          s = std::max(200, std::min(450, neu));
+      - script.execute: senden
+      - script.execute: anzeigen
+  # Drehgeber: 3 s nach der letzten Änderung Sollwert sofort dauerhaft sichern und ansagen
+  - id: dreh_gespeichert
+    mode: restart
+    then:
+      - delay: 3s
+      - lambda: 'global_preferences->sync();'
+      - script.execute: {id: sag, n: 15}
+  # ---- Hinweisfenster (4 s) ----
+  - id: hinweis
+    mode: restart
+    parameters:
+      text: string
+    then:
+      - lambda: |-
+          t12::setze_text(id(hin_text), text.c_str());
+          t12::sichtbar(id(hin_box), true);
+      - light.turn_on: {id: display_backlight, brightness: 100%}
+      - delay: 4s
+      - lambda: 't12::sichtbar(id(hin_box), false);'
+
+  # ---- Spitzenprofile ----
+  - id: profile_holen
+    then:
+      - http_request.get:
+          url: ${ha_url}/local/t12_profile.yaml
+          capture_response: true
+          max_response_buffer_size: 4096
+          on_response:
+            then:
+              - lambda: |-
+                  if (response->status_code == 200) id(prof_anzahl) = t12::profile_laden(body);
+                  else ESP_LOGW("t12", "Profile: HTTP %d", response->status_code);
+          on_error:
+            then:
+              - logger.log: "Profile: Home Assistant nicht erreichbar"
+  - id: popup_oeffnen
+    parameters:
+      i: int
+    then:
+      - lambda: |-
+          if (t12::profile.empty() || !id(profile_an)) return;
+          t12::popup = i;
+          char b[48];
+          snprintf(b, sizeof(b), "Kolben %c – welche Spitze?", 'A' + i);
+          t12::setze_text(id(pop_titel), b);
+          lv_roller_set_options(id(pop_rol)->obj, t12::profil_liste().c_str(), LV_ROLLER_MODE_NORMAL);
+          int cur = (i == 0) ? id(prof_a) : id(prof_b);
+          if (t12::profil(cur)) lv_roller_set_selected(id(pop_rol)->obj, cur, LV_ANIM_OFF);
+          t12::sichtbar(id(pop_layer), true);
+          id(letzte_bedienung) = millis();
+      - light.turn_on: {id: display_backlight, brightness: 100%}
+  - id: popup_ok
+    then:
+      - lambda: |-
+          int i = t12::popup;
+          if (i < 0) return;
+          int idx = lv_roller_get_selected(id(pop_rol)->obj);
+          const t12::Profil *p = t12::profil(idx);
+          if (p != nullptr) {
+            if (i == 0) { id(prof_a) = idx; id(soll_a) = p->t[0]; }
+            else        { id(prof_b) = idx; id(soll_b) = p->t[0]; }
+            t12::auswahl = i;
+            global_preferences->sync();
+          }
+          t12::popup = -1;
+          t12::sichtbar(id(pop_layer), false);
+      - script.execute: senden
+      - script.execute: anzeigen
+  - id: popup_zu
+    then:
+      - lambda: |-
+          t12::popup = -1;
+          t12::sichtbar(id(pop_layer), false);
+  # Festwert-Taste n (1..3): mit Profil die Temperaturen der Spitze, sonst die eigenen Festwerte
+  - id: festwert_taste
+    parameters:
+      n: int
+    then:
+      - lambda: |-
+          int i = t12::auswahl;
+          const t12::Profil *p = id(profile_an) ? t12::profil(i == 0 ? id(prof_a) : id(prof_b)) : nullptr;
+          int w = p ? p->t[n - 1] : (n == 1 ? id(fw_1) : (n == 2 ? id(fw_2) : id(fw_3)));
+          id(soll_aendern).execute(0, w);
+  - id: ein_aus
+    parameters:
+      i: int
+    then:
+      - lambda: |-
+          t12::Kolben &k = t12::K[i];
+          if (t12::auswahl != i) { t12::auswahl = i; return; }   // erstes Antippen: nur auswählen
+          if (!k.w_ein) {
+            char b[64];
+            if (!t12::online(i)) {
+              snprintf(b, sizeof(b), "Kolben %c: Modul nicht verbunden", 'A' + i);
+              id(hinweis).execute(std::string(b));
+              id(sag).execute(22);
+              return;
+            }
+            if (k.fehler & 1) {
+              snprintf(b, sizeof(b), "Kolben %c: kein Lötkolben\noder keine Spitze eingesteckt", 'A' + i);
+              id(hinweis).execute(std::string(b));
+              id(sag).execute(22);
+              id(sag).execute(7 + i);
+              return;
+            }
+          }
+          k.w_ein = !k.w_ein;
+      - script.execute: senden
+      - script.execute: anzeigen
+
+  # ---- Ton ----
+  # n: 0 Start, 1/2 bereit A/B, 3/4 Standby, 5/6 schläft, 7/8 keine Spitze, 9/10 Fehler, 11/12 Verbindung,
+  #    13/14 kühlt ab, 15 Temperatur gespeichert, 20 Klick, 21 Ton bereit, 22 Ton Fehler
+  - id: sag
+    mode: queued
+    max_runs: 6
+    parameters:
+      n: int
+    then:
+      - lambda: |-
+          const audio::AudioFile *f = nullptr;
+          bool ton = n >= 20;
+          if (ton ? !id(ton_an) : !id(sprache_an)) return;
+          switch (n) {
+            case 0: f = snd_start; break;
+            case 1: f = snd_a_bereit; break;     case 2: f = snd_b_bereit; break;
+            case 3: f = snd_a_standby; break;    case 4: f = snd_b_standby; break;
+            case 5: f = snd_a_schlaf; break;     case 6: f = snd_b_schlaf; break;
+            case 7: f = snd_a_spitze; break;     case 8: f = snd_b_spitze; break;
+            case 9: f = snd_a_fehler; break;     case 10: f = snd_b_fehler; break;
+            case 11: f = snd_a_verbindung; break; case 12: f = snd_b_verbindung; break;
+            case 13: f = snd_a_kuehlt; break;     case 14: f = snd_b_kuehlt; break;
+            case 15: f = snd_gespeichert; break;
+            case 20: f = snd_klick; break;
+            case 21: f = snd_ton_bereit; break;
+            case 22: f = snd_ton_fehler; break;
+          }
+          if (f != nullptr) id(ansage).play_file(f, true, true);
+  # Ansage mit 1 s Verzögerung (z. B. "kühlt ab" nach dem Ausschalten)
+  - id: sag_spaet
+    mode: parallel
+    parameters:
+      n: int
+    then:
+      - delay: 1s
+      - script.execute: {id: sag, n: !lambda 'return n;'}
+  - id: klick
+    then:
+      - lambda: |-
+          if (!id(ton_an)) return;
+          if (id(ansage).state == media_player::MEDIA_PLAYER_STATE_ANNOUNCING) return;   // Ansage nicht abwürgen
+          id(ansage).play_file(snd_klick, true, false);
+
+  # Ansagen bei Zustandswechsel
+  - id: ansagen
+    then:
+      - lambda: |-
+          for (int i = 0; i < t12::anzahl; i++) {
+            t12::Kolben &k = t12::K[i];
+            int c = t12::code(i);
+            int alt = k.code_alt;
+            k.code_alt = c;
+            if (alt < 0 || c == alt) continue;
+            if (c == 5 && id(ans_bereit)) { id(sag).execute(21); id(sag).execute(1 + i); }
+            // Standby oder Ausschalten eines heißen Kolbens: "kühlt ab"
+            else if (c == 3 && id(ans_standby)) id(sag).execute(13 + i);
+            else if (c == 1 && (alt == 3 || alt == 4 || alt == 5 || alt == 6 || alt == 9) && k.ist > t12::HEISS && id(ans_standby)) id(sag_spaet).execute(13 + i);
+            else if (c == 2 && k.w_ein && id(ans_standby)) id(sag).execute(5 + i);
+            else if (c == 7 && id(ans_fehler) && k.w_ein) id(sag).execute(7 + i);
+            else if (c == 8 && id(ans_fehler)) { id(sag).execute(22); id(sag).execute(9 + i); }
+            else if (c == 0 && alt > 0 && k.w_ein && id(ans_fehler)) { id(sag).execute(22); id(sag).execute(11 + i); }
+          }
+
+  # ---- Lüfter ----
+  - id: luefter
+    then:
+      - lambda: |-
+          uint32_t jetzt = millis();
+          // Absaugung
+          bool an = false;
+          if (id(abs_modus) == 1) an = true;
+          else if (id(abs_modus) == 0) an = t12::in_hand(0, id(abs_nachlauf)) || t12::in_hand(1, id(abs_nachlauf));
+          int soll_abs = an ? id(abs_drehzahl) : 0;
+          if (soll_abs > 0 && id(abs_prozent) == 0) id(abs_seit) = jetzt;            // Anlauf
+          id(abs_prozent) = soll_abs;
+          float p = soll_abs / 100.0f;
+          if (soll_abs > 0 && (jetzt - id(abs_seit)) < 1000) p = 1.0f;              // 1 s volle Kraft zum Anlaufen
+          id(pwm_absaugung).set_level(p);
+          // Netzteil-Lüfter
+          float t = id(nt_temp).state;
+          int soll_nt;
+          if (std::isnan(t)) soll_nt = 60;                                           // Fühler fehlt: sicherheitshalber 60 %
+          else if (t < id(nt_start) - 2) soll_nt = 0;
+          else if (t < id(nt_start)) soll_nt = id(nt_prozent) > 0 ? 30 : 0;           // 2 K Hysterese
+          else if (t >= id(nt_voll)) soll_nt = 100;
+          else soll_nt = 30 + (int) (70.0f * (t - id(nt_start)) / std::max(1, id(nt_voll) - id(nt_start)));
+          if (soll_nt > 0 && id(nt_prozent) == 0) id(nt_seit) = jetzt;
+          id(nt_prozent) = soll_nt;
+          float q = soll_nt / 100.0f;
+          if (soll_nt > 0 && (jetzt - id(nt_seit)) < 1000) q = 1.0f;
+          id(pwm_netzteil).set_level(q);
+
+  # ---- Einstellungen der Module ----
+  # Kolben-Einstellung n um richtung * Schritt ändern
+  - id: cfg_aendern
+    parameters:
+      n: int
+      richtung: int
+    then:
+      - lambda: |-
+          int i = t12::cfg_kolben;
+          t12::Kolben &k = t12::K[i];
+          if (!k.cfg_ok) return;
+          static const int schritt[5] = {10, 30, 60, 10, 10};
+          int w = k.cfg[n] + richtung * schritt[n];
+          if (n == 1 && w < 0) w = 0;
+          if (n == 2 && w < 60) w = 60;
+          if (w < 0) w = 0;
+          k.cfg[n] = w;                       // sofort anzeigen, Modul bestätigt mit $CFG
+          k.cfg_geaendert = true;
+          char b[24];
+          snprintf(b, sizeof(b), "C %d %d", n, w);
+          id(an_modul).execute(i, std::string(b));
+  - id: cfg_speichern
+    then:
+      - lambda: |-
+          for (int i = 0; i < t12::anzahl; i++)
+            if (t12::K[i].cfg_geaendert && t12::online(i)) id(an_modul).execute(i, std::string("W"));
+
+  # ---- Anzeige ----
+  - id: anzeigen
+    then:
+      - lambda: |-
+          lv_obj_t *kachel[2] = {id(kachel_a), id(kachel_b)};
+          lv_obj_t *ist[2]    = {id(t_ist_a), id(t_ist_b)};
+          lv_obj_t *soll[2]   = {id(t_soll_a), id(t_soll_b)};
+          lv_obj_t *stat[2]   = {id(t_stat_a), id(t_stat_b)};
+          lv_obj_t *bar[2]    = {id(bar_a), id(bar_b)};
+          lv_obj_t *ein[2]    = {id(t_ein_a), id(t_ein_b)};
+          lv_obj_t *zeit[2]   = {id(zeit_a), id(zeit_b)};
+          int sw[2] = {id(soll_a), id(soll_b)};
+          char b[48];
+          for (int i = 0; i < t12::anzahl; i++) {
+            const t12::Kolben &k = t12::K[i];
+            bool on = t12::online(i);
+            uint32_t farbe;
+            const char *txt = t12::status(i, farbe);
+            if (on && !(k.fehler & 1)) snprintf(b, sizeof(b), "%d°", k.ist); else strcpy(b, "---");
+            t12::setze_text(ist[i], b);
+            t12::setze_farbe(ist[i], k.w_ein && on ? 0xFFFFFF : 0x8C8C8C);
+            if (on && k.ein && k.ziel != sw[i] && (k.modus == 1 || k.modus >= 3)) snprintf(b, sizeof(b), "Soll %d (%d) °C", sw[i], k.ziel);   // Standby/Boost: aktuelles Ziel
+            else snprintf(b, sizeof(b), "Soll %d °C", sw[i]);
+            t12::setze_text(soll[i], b);
+            t12::setze_text(stat[i], txt);
+            t12::setze_farbe(stat[i], farbe);
+            lv_bar_set_value(bar[i], on ? k.pwr : 0, LV_ANIM_OFF);
+            t12::setze_text(ein[i], k.w_ein ? "EIN" : "AUS");
+            t12::setze_farbe(ein[i], k.w_ein ? 0x3CC85A : 0x8C8C8C);
+            float anteil; uint32_t zfarbe;
+            if (t12::restzeit(i, anteil, zfarbe)) {
+              int h = std::max(2, (int) (anteil * 222.0f));
+              if (lv_obj_get_height(zeit[i]) != h) {
+                lv_obj_set_height(zeit[i], h);
+                lv_obj_set_y(zeit[i], 222 - h);               // oberes Ende wandert nach unten
+              }
+              t12::setze_bg(zeit[i], zfarbe);
+              t12::sichtbar(zeit[i], true);
+            } else {
+              t12::sichtbar(zeit[i], false);
+            }
+            t12::setze_rahmen(kachel[i], t12::auswahl == i ? 0xFF8C00 : 0x1F1F1F);
+          }
+          // Kopfzeile
+          std::string kopf;
+          if (id(abs_prozent) > 0) { snprintf(b, sizeof(b), "Absaugung %d %%   ", id(abs_prozent)); kopf += b; }
+          if (!std::isnan(id(nt_temp).state)) { snprintf(b, sizeof(b), "NT %.0f °C", id(nt_temp).state); kopf += b; }
+          t12::setze_text(id(t_kopf), kopf.c_str());
+
+          // Kachel-Titel mit Spitzenprofil
+          { lv_obj_t *nm[2] = {id(t_name_a), id(t_name_b)}; int pr[2] = {id(prof_a), id(prof_b)};
+            for (int i = 0; i < t12::anzahl; i++) {
+              const t12::Profil *p = id(profile_an) ? t12::profil(pr[i]) : nullptr;
+              if (p) snprintf(b, sizeof(b), "%c · %s", 'A' + i, p->name.c_str()); else snprintf(b, sizeof(b), "Kolben %c", 'A' + i);
+              t12::setze_text(nm[i], b);
+            } }
+          // Festwert-Tasten: Profil des gewählten Kolbens oder eigene Festwerte
+          { lv_obj_t *l[3] = {id(fw_l1), id(fw_l2), id(fw_l3)};
+            int w[3] = {id(fw_1), id(fw_2), id(fw_3)};
+            const t12::Profil *p = id(profile_an) ? t12::profil(t12::auswahl == 0 ? id(prof_a) : id(prof_b)) : nullptr;
+            for (int n = 0; n < 3; n++) { snprintf(b, sizeof(b), "%d °C", p ? p->t[n] : w[n]); t12::setze_text(l[n], b); }
+            snprintf(b, sizeof(b), "%d · %d · %d °C%s", w[0], w[1], w[2], id(profile_an) ? " · Profile" : "");
+            t12::setze_text(id(m_info_fw), b);
+            if (lv_scr_act() == id(seite_festwerte)->obj) {
+              lv_obj_t *v[3] = {id(fw_v1), id(fw_v2), id(fw_v3)};
+              for (int n = 0; n < 3; n++) { snprintf(b, sizeof(b), "%d °C", w[n]); t12::setze_text(v[n], b); }
+              if (id(prof_anzahl) > 0) snprintf(b, sizeof(b), "%d Spitzen aus Home Assistant", id(prof_anzahl));
+              else strcpy(b, "keine Profile geladen");
+              t12::setze_text(id(prof_info), b);
+              if (id(profile_an)) lv_obj_add_state(id(sw_prof), LV_STATE_CHECKED); else lv_obj_clear_state(id(sw_prof), LV_STATE_CHECKED);
+            } }
+          // Menü-Kacheln: Kurzinfo
+          const t12::Kolben &ka = t12::K[0];
+          if (ka.cfg_ok) snprintf(b, sizeof(b), "Standby %d °C", ka.cfg[t12::CFG_STBY_T]); else strcpy(b, "Werte vom Modul");
+          t12::setze_text(id(m_info_kolben), b);
+          static const char *am[] = {"Auto", "immer an", "aus"};
+          snprintf(b, sizeof(b), "Absaugung %s · %d %%", am[id(abs_modus) % 3], id(abs_drehzahl));
+          t12::setze_text(id(m_info_luefter), b);
+          snprintf(b, sizeof(b), "Lautstärke %d %% · %s", id(laut), id(sprache_an) ? "Ansagen an" : "Ansagen aus");
+          t12::setze_text(id(m_info_ton), b);
+
+          // Seite Kolben & Standby
+          if (lv_scr_act() == id(seite_kolben)->obj) {
+            int i = t12::cfg_kolben;
+            const t12::Kolben &k = t12::K[i];
+            t12::setze_bg(id(kb_a), i == 0 ? 0xFF8C00 : 0x3A3A3A);
+            t12::setze_bg(id(kb_b), i == 1 ? 0xFF8C00 : 0x3A3A3A);
+            lv_obj_t *v[5] = {id(v_0), id(v_1), id(v_2), id(v_3), id(v_4)};
+            if (!t12::online(i)) { for (auto o : v) t12::setze_text(o, "--"); t12::setze_text(id(t_kolben_hinweis), "Modul nicht verbunden"); }
+            else if (!k.cfg_ok) { for (auto o : v) t12::setze_text(o, "..."); t12::setze_text(id(t_kolben_hinweis), "lese Einstellungen ..."); }
+            else {
+              snprintf(b, sizeof(b), "%d °C", k.cfg[0]); t12::setze_text(v[0], b);
+              if (k.cfg[1] == 0) strcpy(b, "aus"); else if (k.cfg[1] % 60) snprintf(b, sizeof(b), "%d:%02d min", k.cfg[1] / 60, k.cfg[1] % 60); else snprintf(b, sizeof(b), "%d min", k.cfg[1] / 60);
+              t12::setze_text(v[1], b);
+              snprintf(b, sizeof(b), "%d min", k.cfg[2] / 60); t12::setze_text(v[2], b);
+              snprintf(b, sizeof(b), "+%d °C", k.cfg[3]); t12::setze_text(v[3], b);
+              snprintf(b, sizeof(b), "%d s", k.cfg[4]); t12::setze_text(v[4], b);
+              t12::setze_text(id(t_kolben_hinweis), k.cfg_geaendert ? "wird beim Verlassen gespeichert" : "im Modul gespeichert");
+            }
+          }
+
+          // Seite Lüfter & Absaugung
+          if (lv_scr_act() == id(seite_luefter)->obj) {
+            static const char *modi[] = {"Auto", "Immer an", "Aus"};
+            t12::setze_text(id(l_modus_t), modi[id(abs_modus) % 3]);
+            snprintf(b, sizeof(b), "%d %%", id(abs_drehzahl)); t12::setze_text(id(l_drehzahl), b);
+            snprintf(b, sizeof(b), "%d s", id(abs_nachlauf)); t12::setze_text(id(l_nachlauf), b);
+            snprintf(b, sizeof(b), "%d °C", id(nt_start)); t12::setze_text(id(l_start), b);
+            snprintf(b, sizeof(b), "%d °C", id(nt_voll)); t12::setze_text(id(l_voll), b);
+            if (std::isnan(id(nt_temp).state)) snprintf(b, sizeof(b), "Fühler fehlt – Lüfter %d %%", id(nt_prozent));
+            else snprintf(b, sizeof(b), "Netzteil %.1f °C – Lüfter %d %%", id(nt_temp).state, id(nt_prozent));
+            t12::setze_text(id(l_nt_ist), b);
+            snprintf(b, sizeof(b), "Absaugung läuft gerade mit %d %%", id(abs_prozent));
+            t12::setze_text(id(l_abs_ist), id(abs_prozent) ? b : "Absaugung steht");
+          }
+
+          // Seite Ton & Sprache
+          if (lv_scr_act() == id(seite_ton)->obj) {
+            snprintf(b, sizeof(b), "%d %%", id(laut)); t12::setze_text(id(s_laut), b);
+          }
+
+interval:
+  # Lebenszeichen + Sollwerte (Modul geht nach 30 s ohne ESP in Standby)
+  - interval: 2s
+    then:
+      - script.execute: senden
+  - interval: 250ms
+    then:
+      - script.execute: anzeigen
+      - script.execute: ansagen
+      - lambda: |-
+          if (lv_scr_act() != id(seite_system)->obj) return;
+          std::string s;
+          char b[96];
+          for (int i = 0; i < t12::anzahl; i++) {
+            const t12::Kolben &k = t12::K[i];
+            if (t12::online(i))
+              snprintf(b, sizeof(b), "Modul %c: verbunden, %.1f V, Griff %d °C\n   Fehler %d, bewegt vor %d s\n",
+                       'A' + i, k.vin / 10.0f, k.ntc / 10, k.fehler, k.griff);
+            else
+              snprintf(b, sizeof(b), "Modul %c: keine Verbindung\n", 'A' + i);
+            s += b;
+          }
+          snprintf(b, sizeof(b), "\nFirmware ${fw_version}\nWLAN %s", id(wlan_ip).state.c_str());
+          s += b;
+          t12::setze_text(id(t_system), s.c_str());
+  - interval: 1s
+    then:
+      - script.execute: luefter
+      # Spitzenwechsel erkannt -> Profilauswahl
+      - lambda: |-
+          int w = t12::spitzen_wechsel();
+          if (w >= 0 && id(profile_an) && t12::popup < 0 && !t12::profile.empty()) id(popup_oeffnen).execute(w);
+      # 20 s ohne Bedienung: Auswahl schließen, Menü -> Hauptseite
+      - if:
+          condition:
+            lambda: 'return millis() - id(letzte_bedienung) > 20000 && (t12::popup >= 0 || lv_scr_act() != id(seite_haupt)->obj);'
+          then:
+            - script.execute: popup_zu
+            - lvgl.page.show: seite_haupt
+  - interval: 10min
+    startup_delay: 15s
+    then:
+      - script.execute: profile_holen
+
+# ---------------------------------------------------------------------
+#  Drehgeber, Sensoren
+# ---------------------------------------------------------------------
+sensor:
+  - platform: rotary_encoder
+    id: drehgeber
+    pin_a: {number: GPIO40, mode: {input: true, pullup: true}}
+    pin_b: {number: GPIO41, mode: {input: true, pullup: true}}
+    resolution: 1
+    on_clockwise:
+      - lambda: 'id(letzte_bedienung) = millis();'
+      - if:
+          condition:
+            lambda: 'return t12::popup >= 0;'
+          then:
+            - lambda: |-
+                int n = lv_roller_get_option_count(id(pop_rol)->obj);
+                int s = lv_roller_get_selected(id(pop_rol)->obj);
+                if (s + 1 < n) lv_roller_set_selected(id(pop_rol)->obj, s + 1, LV_ANIM_ON);
+          else:
+            - if:
+                condition:
+                  lvgl.page.is_showing: seite_haupt
+                then:
+                  - script.execute: {id: soll_aendern, delta: 5, absolut: 0}
+                  - script.execute: dreh_gespeichert
+    on_anticlockwise:
+      - lambda: 'id(letzte_bedienung) = millis();'
+      - if:
+          condition:
+            lambda: 'return t12::popup >= 0;'
+          then:
+            - lambda: |-
+                int s = lv_roller_get_selected(id(pop_rol)->obj);
+                if (s > 0) lv_roller_set_selected(id(pop_rol)->obj, s - 1, LV_ANIM_ON);
+          else:
+            - if:
+                condition:
+                  lvgl.page.is_showing: seite_haupt
+                then:
+                  - script.execute: {id: soll_aendern, delta: -5, absolut: 0}
+                  - script.execute: dreh_gespeichert
+  - platform: dallas_temp
+    id: nt_temp
+    name: "Netzteil Temperatur"
+    update_interval: 5s
+  - platform: template
+    name: "Kolben A Temperatur"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: 'return t12::online(0) ? t12::K[0].ist : NAN;'
+  - platform: template
+    name: "Kolben B Temperatur"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: 'return t12::online(1) ? t12::K[1].ist : NAN;'
+  - platform: template
+    name: "Netzteil-Lüfter"
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    update_interval: 10s
+    lambda: 'return id(nt_prozent);'
+  - platform: template
+    name: "Absaugung"
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: 'return id(abs_prozent);'
+
+binary_sensor:
+  - platform: gpio
+    id: drehgeber_taster
+    pin: {number: GPIO42, inverted: true, mode: {input: true, pullup: true}}
+    filters:
+      - delayed_on: 20ms
+    on_click:
+      # kurz: Kolben wechseln (in Menüs: zurück zur Hauptseite)
+      - min_length: 20ms
+        max_length: 500ms
+        then:
+          - lambda: 'id(letzte_bedienung) = millis();'
+          - script.execute: klick
+          - if:
+              condition:
+                lambda: 'return t12::popup >= 0;'
+              then:
+                - script.execute: popup_ok        # Profilauswahl bestätigen
+              else:
+                - if:
+                    condition:
+                      lvgl.page.is_showing: seite_haupt
+                    then:
+                      - lambda: 'if (t12::anzahl == 2) t12::auswahl = 1 - t12::auswahl;'
+                      - script.execute: anzeigen
+                    else:
+                      - lvgl.page.show: seite_haupt
+      # lang: Menü
+      - min_length: 800ms
+        max_length: 5s
+        then:
+          - lambda: 'id(letzte_bedienung) = millis();'
+          - if:
+              condition:
+                lambda: 'return t12::popup < 0;'
+              then:
+                - lvgl.page.show: seite_menue
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      id: wlan_ip
+
+# ---------------------------------------------------------------------
+#  Schriften
+# ---------------------------------------------------------------------
+font:
+  - file: "gfonts://Roboto"
+    id: f16
+    size: 16
+    glyphsets: [GF_Latin_Kernel]
+    glyphs: ["°", "Ä", "Ö", "Ü", "ä", "ö", "ü", "ß", "–", "·", "−", "„", "“"]
+  - file: "gfonts://Roboto"
+    id: f20
+    size: 20
+    glyphsets: [GF_Latin_Kernel]
+    glyphs: ["°", "Ä", "Ö", "Ü", "ä", "ö", "ü", "ß", "–", "·", "−", "„", "“"]
+  - file: "gfonts://Roboto"
+    id: f24
+    size: 24
+    glyphsets: [GF_Latin_Kernel]
+    glyphs: ["°", "Ä", "Ö", "Ü", "ä", "ö", "ü", "ß", "–", "·", "−", "„", "“"]
+  - file:
+      type: gfonts
+      family: Roboto Mono
+      weight: 500
+    id: d64
+    size: 64
+    glyphs: "0123456789-°"
+
+# ---------------------------------------------------------------------
+#  Oberfläche 480 x 320 (quer)
+# ---------------------------------------------------------------------
+lvgl:
+  displays:
+    - my_display
+  touchscreens:
+    - touchscreen_id: my_touch
+  rotation: 90
+  buffer_size: 25%
+  default_font: f20
+  on_idle:
+    timeout: 600s
+    then:
+      - light.turn_on: {id: display_backlight, brightness: 25%}
+  theme:
+    label:
+      text_color: 0xFFFFFF
+  style_definitions:
+    - id: st_kachel
+      bg_color: 0x1F1F1F
+      bg_opa: COVER
+      radius: 10
+      border_width: 3
+      border_color: 0x1F1F1F
+      pad_all: 0
+    - id: st_knopf
+      bg_color: 0x3A3A3A
+      bg_opa: COVER
+      radius: 8
+      border_width: 0
+      shadow_width: 0
+    - id: st_zeile
+      bg_color: 0x1F1F1F
+      bg_opa: COVER
+      radius: 8
+      border_width: 0
+      pad_all: 0
+
+  # über allen Seiten: Profilauswahl nach Spitzenwechsel und Hinweise
+  top_layer:
+    widgets:
+      - obj:
+          id: pop_layer
+          x: 0
+          y: 0
+          width: 480
+          height: 320
+          radius: 0
+          border_width: 0
+          bg_color: 0x000000
+          bg_opa: 70%
+          hidden: true
+          widgets:
+            - obj:
+                align: CENTER
+                width: 400
+                height: 290
+                radius: 14
+                bg_color: 0x262626
+                border_width: 3
+                border_color: 0xFF8C00
+                scrollable: false
+                widgets:
+                  - label: {id: pop_titel, align: TOP_MID, y: 2, text: "", text_color: 0xFF8C00}
+                  - roller:
+                      id: pop_rol
+                      align: TOP_MID
+                      y: 36
+                      width: 340
+                      visible_row_count: 4
+                      text_font: f24
+                      options: ["-"]
+                      bg_color: 0x1F1F1F
+                      border_width: 0
+                      selected:
+                        bg_color: 0xFF8C00
+                        text_color: 0x000000
+                  - button:
+                      styles: st_knopf
+                      align: BOTTOM_LEFT
+                      x: 6
+                      y: -4
+                      width: 150
+                      height: 44
+                      on_click:
+                        - script.execute: popup_zu
+                      widgets:
+                        - label: {align: CENTER, text: "Abbrechen", text_font: f16}
+                  - button:
+                      styles: st_knopf
+                      align: BOTTOM_RIGHT
+                      x: -6
+                      y: -4
+                      width: 150
+                      height: 44
+                      bg_color: 0xFF8C00
+                      on_click:
+                        - script.execute: popup_ok
+                      widgets:
+                        - label: {align: CENTER, text: "Übernehmen", text_color: 0x000000}
+      - obj:
+          id: hin_box
+          align: CENTER
+          width: 400
+          height: 130
+          radius: 14
+          bg_color: 0x262626
+          border_width: 3
+          border_color: 0xFFC107
+          scrollable: false
+          hidden: true
+          on_click:
+            - lambda: 't12::sichtbar(id(hin_box), false);'
+          widgets:
+            - label: {id: hin_text, align: CENTER, width: 370, long_mode: WRAP, text_align: CENTER, text: "", text_color: 0xFFC107}
+
+  pages:
+    # ================= Hauptseite =================
+    - id: seite_haupt
+      bg_color: 0x000000
+      scrollable: false
+      widgets:
+        - label: {x: 10, y: 6, text: "T12 Lötstation", text_color: 0xFF8C00}
+        - label: {id: t_kopf, align: TOP_RIGHT, x: -10, y: 9, text: "", text_font: f16, text_color: 0x8C8C8C}
+
+        # ---- Kolben A ----
+        - obj:
+            id: kachel_a
+            styles: st_kachel
+            x: 8
+            y: 36
+            width: 228
+            height: 228
+            scrollable: false
+            # ganze Kachel antippen = Kolben ein/aus (und auswählen)
+            on_click:
+              - script.execute: {id: ein_aus, i: 0}
+            widgets:
+              - label: {id: t_name_a, x: 14, y: 10, text: "Kolben A", text_color: 0x8C8C8C}
+              - label: {id: t_ein_a, align: TOP_RIGHT, x: -14, y: 12, text: "AUS", text_font: f16, text_color: 0x8C8C8C}
+              # Restzeit bis Standby (gelb) / Schlafen (blau), läuft am Außenrand nach unten
+              - obj: {id: zeit_a, align: TOP_LEFT, x: 0, y: 0, width: 5, height: 222, radius: 2, border_width: 0, bg_color: 0xFFC107, bg_opa: COVER, clickable: false, hidden: true}
+              - label: {id: t_ist_a, align: TOP_MID, y: 48, text: "---", text_font: d64}
+              - label: {id: t_soll_a, align: TOP_MID, y: 124, text: "Soll --- °C", text_font: f24}
+              - label: {id: t_stat_a, align: TOP_MID, y: 160, text: "", text_font: f16, text_color: 0x8C8C8C}
+              - bar:
+                  id: bar_a
+                  x: 12
+                  y: 196
+                  width: 198
+                  height: 14
+                  min_value: 0
+                  max_value: 100
+                  value: 0
+                  clickable: false
+                  bg_color: 0x333333
+                  indicator:
+                    bg_color: 0xFF8C00
+
+        # ---- Kolben B ----
+        - obj:
+            id: kachel_b
+            styles: st_kachel
+            x: 244
+            y: 36
+            width: 228
+            height: 228
+            scrollable: false
+            # ganze Kachel antippen = Kolben ein/aus (und auswählen)
+            on_click:
+              - script.execute: {id: ein_aus, i: 1}
+            widgets:
+              - label: {id: t_name_b, x: 14, y: 10, text: "Kolben B", text_color: 0x8C8C8C}
+              - label: {id: t_ein_b, align: TOP_RIGHT, x: -14, y: 12, text: "AUS", text_font: f16, text_color: 0x8C8C8C}
+              # Restzeit bis Standby (gelb) / Schlafen (blau), läuft am Außenrand nach unten
+              - obj: {id: zeit_b, align: TOP_RIGHT, x: 0, y: 0, width: 5, height: 222, radius: 2, border_width: 0, bg_color: 0xFFC107, bg_opa: COVER, clickable: false, hidden: true}
+              - label: {id: t_ist_b, align: TOP_MID, y: 48, text: "---", text_font: d64}
+              - label: {id: t_soll_b, align: TOP_MID, y: 124, text: "Soll --- °C", text_font: f24}
+              - label: {id: t_stat_b, align: TOP_MID, y: 160, text: "", text_font: f16, text_color: 0x8C8C8C}
+              - bar:
+                  id: bar_b
+                  x: 12
+                  y: 196
+                  width: 198
+                  height: 14
+                  min_value: 0
+                  max_value: 100
+                  value: 0
+                  clickable: false
+                  bg_color: 0x333333
+                  indicator:
+                    bg_color: 0xFF8C00
+
+        # ---- Festwerte (für den gewählten Kolben) + Menü ----
+        - button:
+            styles: st_knopf
+            x: 8
+            y: 272
+            width: 110
+            height: 42
+            on_click:
+              - script.execute: {id: festwert_taste, n: 1}
+            widgets:
+              - label: {id: fw_l1, align: CENTER, text: "280 °C"}
+        - button:
+            styles: st_knopf
+            x: 126
+            y: 272
+            width: 110
+            height: 42
+            on_click:
+              - script.execute: {id: festwert_taste, n: 2}
+            widgets:
+              - label: {id: fw_l2, align: CENTER, text: "330 °C"}
+        - button:
+            styles: st_knopf
+            x: 244
+            y: 272
+            width: 110
+            height: 42
+            on_click:
+              - script.execute: {id: festwert_taste, n: 3}
+            widgets:
+              - label: {id: fw_l3, align: CENTER, text: "380 °C"}
+        - button:
+            styles: st_knopf
+            x: 362
+            y: 272
+            width: 110
+            height: 42
+            on_click:
+              - lvgl.page.show: seite_menue
+            widgets:
+              - label: {align: CENTER, text: "Menü", text_color: 0xFF8C00}
+
+    # ================= Menü =================
+    - id: seite_menue
+      bg_color: 0x000000
+      scrollable: false
+      widgets:
+        - label: {x: 10, y: 8, text: "Menü", text_color: 0xFF8C00}
+        - button:
+            styles: st_knopf
+            align: TOP_RIGHT
+            x: -4
+            y: 0
+            width: 140
+            height: 40
+            on_click:
+              - lvgl.page.show: seite_haupt
+            widgets:
+              - label: {align: CENTER, text: "< Zurück", text_font: f16}
+        - obj:
+            styles: st_kachel
+            x: 8
+            y: 42
+            width: 228
+            height: 86
+            on_click:
+              - lambda: 't12::cfg_kolben = t12::auswahl;'
+              - lvgl.page.show: seite_kolben
+            widgets:
+              - obj: {x: 0, y: 0, width: 6, height: 86, bg_color: 0xFF8C00, radius: 3, border_width: 0, clickable: false}
+              - label: {x: 20, y: 12, text: "Kolben & Standby", text_font: f20}
+              - label: {id: m_info_kolben, x: 20, y: 50, text: "", text_font: f16, text_color: 0x8C8C8C}
+        - obj:
+            styles: st_kachel
+            x: 244
+            y: 42
+            width: 228
+            height: 86
+            on_click:
+              - lvgl.page.show: seite_luefter
+            widgets:
+              - obj: {x: 0, y: 0, width: 6, height: 86, bg_color: 0x4FC3F7, radius: 3, border_width: 0, clickable: false}
+              - label: {x: 20, y: 12, text: "Lüfter & Absaugung", text_font: f20}
+              - label: {id: m_info_luefter, x: 20, y: 50, text: "", text_font: f16, text_color: 0x8C8C8C}
+        - obj:
+            styles: st_kachel
+            x: 8
+            y: 134
+            width: 228
+            height: 86
+            on_click:
+              - lvgl.page.show: seite_ton
+            widgets:
+              - obj: {x: 0, y: 0, width: 6, height: 86, bg_color: 0x3CC85A, radius: 3, border_width: 0, clickable: false}
+              - label: {x: 20, y: 12, text: "Ton & Sprache", text_font: f20}
+              - label: {id: m_info_ton, x: 20, y: 50, text: "", text_font: f16, text_color: 0x8C8C8C}
+        - obj:
+            styles: st_kachel
+            x: 244
+            y: 134
+            width: 228
+            height: 86
+            on_click:
+              - lvgl.page.show: seite_festwerte
+            widgets:
+              - obj: {x: 0, y: 0, width: 6, height: 86, bg_color: 0xC77DFF, radius: 3, border_width: 0, clickable: false}
+              - label: {x: 20, y: 12, text: "Festwerte", text_font: f20}
+              - label: {id: m_info_fw, x: 20, y: 50, text: "", text_font: f16, text_color: 0x8C8C8C}
+        - obj:
+            styles: st_kachel
+            x: 8
+            y: 226
+            width: 464
+            height: 86
+            on_click:
+              - lvgl.page.show: seite_system
+            widgets:
+              - obj: {x: 0, y: 0, width: 6, height: 86, bg_color: 0x8C8C8C, radius: 3, border_width: 0, clickable: false}
+              - label: {x: 20, y: 12, text: "System", text_font: f20}
+              - label: {x: 20, y: 50, text: "Module · WLAN · Firmware", text_font: f16, text_color: 0x8C8C8C}
+
+    # ================= Kolben & Standby (Werte im Modul) =================
+    - id: seite_kolben
+      bg_color: 0x000000
+      scrollable: false
+      on_load:
+        - lambda: |-
+            for (int i = 0; i < t12::anzahl; i++) t12::K[i].cfg_ok = false;   // neu lesen
+        - script.execute: {id: an_modul, i: 0, cmd: "G"}
+        - script.execute: {id: an_modul, i: 1, cmd: "G"}
+      on_unload:
+        - script.execute: cfg_speichern
+      widgets:
+        - label: {x: 10, y: 8, text: "Kolben & Standby", text_color: 0xFF8C00}
+        - button:
+            id: kb_a
+            styles: st_knopf
+            x: 190
+            y: 2
+            width: 80
+            height: 32
+            on_click:
+              - script.execute: cfg_speichern
+              - lambda: 't12::cfg_kolben = 0;'
+            widgets:
+              - label: {align: CENTER, text: "A", text_font: f16}
+        - button:
+            id: kb_b
+            styles: st_knopf
+            x: 276
+            y: 2
+            width: 80
+            height: 32
+            on_click:
+              - script.execute: cfg_speichern
+              - lambda: 't12::cfg_kolben = 1;'
+            widgets:
+              - label: {align: CENTER, text: "B", text_font: f16}
+        - button:
+            styles: st_knopf
+            align: TOP_RIGHT
+            x: -4
+            y: 0
+            width: 140
+            height: 40
+            on_click:
+              - lvgl.page.show: seite_menue
+            widgets:
+              - label: {align: CENTER, text: "< Zurück", text_font: f16}
+        # Zeilen: Name, Wert, − / +
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 42
+            width: 464
+            height: 44
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Standby-Temperatur"}
+              - label: {id: v_0, align: RIGHT_MID, x: -110, text: "--"}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -56, width: 44, height: 34, on_click: [{script.execute: {id: cfg_aendern, n: 0, richtung: -1}}], widgets: [{label: {align: CENTER, text: "−"}}]}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -6, width: 44, height: 34, on_click: [{script.execute: {id: cfg_aendern, n: 0, richtung: 1}}], widgets: [{label: {align: CENTER, text: "+"}}]}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 92
+            width: 464
+            height: 44
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Standby nach"}
+              - label: {id: v_1, align: RIGHT_MID, x: -110, text: "--"}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -56, width: 44, height: 34, on_click: [{script.execute: {id: cfg_aendern, n: 1, richtung: -1}}], widgets: [{label: {align: CENTER, text: "−"}}]}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -6, width: 44, height: 34, on_click: [{script.execute: {id: cfg_aendern, n: 1, richtung: 1}}], widgets: [{label: {align: CENTER, text: "+"}}]}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 142
+            width: 464
+            height: 44
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Schlafen nach"}
+              - label: {id: v_2, align: RIGHT_MID, x: -110, text: "--"}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -56, width: 44, height: 34, on_click: [{script.execute: {id: cfg_aendern, n: 2, richtung: -1}}], widgets: [{label: {align: CENTER, text: "−"}}]}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -6, width: 44, height: 34, on_click: [{script.execute: {id: cfg_aendern, n: 2, richtung: 1}}], widgets: [{label: {align: CENTER, text: "+"}}]}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 192
+            width: 464
+            height: 44
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Boost"}
+              - label: {id: v_3, align: RIGHT_MID, x: -110, text: "--"}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -56, width: 44, height: 34, on_click: [{script.execute: {id: cfg_aendern, n: 3, richtung: -1}}], widgets: [{label: {align: CENTER, text: "−"}}]}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -6, width: 44, height: 34, on_click: [{script.execute: {id: cfg_aendern, n: 3, richtung: 1}}], widgets: [{label: {align: CENTER, text: "+"}}]}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 242
+            width: 464
+            height: 44
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Boost-Dauer"}
+              - label: {id: v_4, align: RIGHT_MID, x: -110, text: "--"}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -56, width: 44, height: 34, on_click: [{script.execute: {id: cfg_aendern, n: 4, richtung: -1}}], widgets: [{label: {align: CENTER, text: "−"}}]}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -6, width: 44, height: 34, on_click: [{script.execute: {id: cfg_aendern, n: 4, richtung: 1}}], widgets: [{label: {align: CENTER, text: "+"}}]}
+        - label: {id: t_kolben_hinweis, x: 12, y: 294, text: "", text_font: f16, text_color: 0x8C8C8C}
+
+    # ================= Festwerte + Spitzenprofile =================
+    - id: seite_festwerte
+      bg_color: 0x000000
+      scrollable: false
+      widgets:
+        - label: {x: 10, y: 8, text: "Festwerte", text_color: 0xFF8C00}
+        - button:
+            styles: st_knopf
+            align: TOP_RIGHT
+            x: -4
+            y: 0
+            width: 140
+            height: 40
+            on_click:
+              - lvgl.page.show: seite_menue
+            widgets:
+              - label: {align: CENTER, text: "< Zurück", text_font: f16}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 40
+            width: 464
+            height: 44
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Taste 1"}
+              - label: {id: fw_v1, align: RIGHT_MID, x: -116, text: "--"}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -58, width: 48, height: 36, on_click: [{lambda: 'id(fw_1) = std::max(200, id(fw_1) - 5);'}], widgets: [{label: {align: CENTER, text: "−"}}]}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -6, width: 48, height: 36, on_click: [{lambda: 'id(fw_1) = std::min(450, id(fw_1) + 5);'}], widgets: [{label: {align: CENTER, text: "+"}}]}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 88
+            width: 464
+            height: 44
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Taste 2"}
+              - label: {id: fw_v2, align: RIGHT_MID, x: -116, text: "--"}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -58, width: 48, height: 36, on_click: [{lambda: 'id(fw_2) = std::max(200, id(fw_2) - 5);'}], widgets: [{label: {align: CENTER, text: "−"}}]}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -6, width: 48, height: 36, on_click: [{lambda: 'id(fw_2) = std::min(450, id(fw_2) + 5);'}], widgets: [{label: {align: CENTER, text: "+"}}]}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 136
+            width: 464
+            height: 44
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Taste 3"}
+              - label: {id: fw_v3, align: RIGHT_MID, x: -116, text: "--"}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -58, width: 48, height: 36, on_click: [{lambda: 'id(fw_3) = std::max(200, id(fw_3) - 5);'}], widgets: [{label: {align: CENTER, text: "−"}}]}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -6, width: 48, height: 36, on_click: [{lambda: 'id(fw_3) = std::min(450, id(fw_3) + 5);'}], widgets: [{label: {align: CENTER, text: "+"}}]}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 184
+            width: 464
+            height: 40
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Spitzenprofile aus HA"}
+              - switch: {id: sw_prof, align: RIGHT_MID, x: -10, width: 56, height: 28, indicator: {checked: {bg_color: 0xFF8C00}}, on_change: [{lambda: 'id(profile_an) = x;'}]}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 228
+            width: 464
+            height: 40
+            widgets:
+              - label: {id: prof_info, align: LEFT_MID, x: 12, text: "", text_font: f16, text_color: 0x8C8C8C}
+              - button:
+                  styles: st_knopf
+                  align: RIGHT_MID
+                  x: -6
+                  width: 150
+                  height: 32
+                  on_click:
+                    - script.execute: profile_holen
+                  widgets:
+                    - label: {align: CENTER, text: "Neu laden", text_font: f16}
+        - button:
+            styles: st_knopf
+            x: 8
+            y: 274
+            id: fw_spitze_a
+            width: 228
+            height: 40
+            on_click:
+              - script.execute: {id: popup_oeffnen, i: 0}
+            widgets:
+              - label: {align: CENTER, text: "Spitze A wählen", text_font: f16}
+        - button:
+            styles: st_knopf
+            x: 244
+            y: 274
+            id: fw_spitze_b
+            width: 228
+            height: 40
+            on_click:
+              - script.execute: {id: popup_oeffnen, i: 1}
+            widgets:
+              - label: {align: CENTER, text: "Spitze B wählen", text_font: f16}
+
+    # ================= Lüfter & Absaugung =================
+    - id: seite_luefter
+      bg_color: 0x000000
+      scrollable: false
+      widgets:
+        - label: {x: 10, y: 8, text: "Lüfter & Absaugung", text_color: 0xFF8C00}
+        - button:
+            styles: st_knopf
+            align: TOP_RIGHT
+            x: -4
+            y: 0
+            width: 140
+            height: 40
+            on_click:
+              - lvgl.page.show: seite_menue
+            widgets:
+              - label: {align: CENTER, text: "< Zurück", text_font: f16}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 42
+            width: 464
+            height: 40
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Absaugung"}
+              - button:
+                  styles: st_knopf
+                  align: RIGHT_MID
+                  x: -6
+                  width: 140
+                  height: 32
+                  on_click:
+                    - lambda: 'id(abs_modus) = (id(abs_modus) + 1) % 3;'
+                  widgets:
+                    - label: {id: l_modus_t, align: CENTER, text: "Auto", text_color: 0x4FC3F7}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 86
+            width: 464
+            height: 40
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Drehzahl"}
+              - label: {id: l_drehzahl, align: RIGHT_MID, x: -110, text: "--"}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -56, width: 44, height: 32, on_click: [{lambda: 'id(abs_drehzahl) = std::max(30, id(abs_drehzahl) - 10);'}], widgets: [{label: {align: CENTER, text: "−"}}]}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -6, width: 44, height: 32, on_click: [{lambda: 'id(abs_drehzahl) = std::min(100, id(abs_drehzahl) + 10);'}], widgets: [{label: {align: CENTER, text: "+"}}]}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 130
+            width: 464
+            height: 40
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Nachlauf"}
+              - label: {id: l_nachlauf, align: RIGHT_MID, x: -110, text: "--"}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -56, width: 44, height: 32, on_click: [{lambda: 'id(abs_nachlauf) = std::max(0, id(abs_nachlauf) - 5);'}], widgets: [{label: {align: CENTER, text: "−"}}]}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -6, width: 44, height: 32, on_click: [{lambda: 'id(abs_nachlauf) = std::min(120, id(abs_nachlauf) + 5);'}], widgets: [{label: {align: CENTER, text: "+"}}]}
+        - label: {id: l_abs_ist, x: 14, y: 174, text: "", text_font: f16, text_color: 0x8C8C8C}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 198
+            width: 464
+            height: 40
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Netzteil-Lüfter ab"}
+              - label: {id: l_start, align: RIGHT_MID, x: -110, text: "--"}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -56, width: 44, height: 32, on_click: [{lambda: 'id(nt_start) = std::max(25, id(nt_start) - 1);'}], widgets: [{label: {align: CENTER, text: "−"}}]}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -6, width: 44, height: 32, on_click: [{lambda: 'id(nt_start) = std::min(id(nt_voll) - 1, id(nt_start) + 1);'}], widgets: [{label: {align: CENTER, text: "+"}}]}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 242
+            width: 464
+            height: 40
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "volle Drehzahl ab"}
+              - label: {id: l_voll, align: RIGHT_MID, x: -110, text: "--"}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -56, width: 44, height: 32, on_click: [{lambda: 'id(nt_voll) = std::max(id(nt_start) + 1, id(nt_voll) - 1);'}], widgets: [{label: {align: CENTER, text: "−"}}]}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -6, width: 44, height: 32, on_click: [{lambda: 'id(nt_voll) = std::min(80, id(nt_voll) + 1);'}], widgets: [{label: {align: CENTER, text: "+"}}]}
+        - label: {id: l_nt_ist, x: 14, y: 290, text: "", text_font: f16, text_color: 0x8C8C8C}
+
+    # ================= Ton & Sprache =================
+    - id: seite_ton
+      bg_color: 0x000000
+      scrollable: false
+      on_load:
+        - lambda: |-
+            lv_obj_t *sw[5] = {id(sw_ton), id(sw_sprache), id(sw_bereit), id(sw_standby), id(sw_fehler)};
+            bool st[5] = {id(ton_an), id(sprache_an), id(ans_bereit), id(ans_standby), id(ans_fehler)};
+            for (int i = 0; i < 5; i++) { if (st[i]) lv_obj_add_state(sw[i], LV_STATE_CHECKED); else lv_obj_clear_state(sw[i], LV_STATE_CHECKED); }
+      widgets:
+        - label: {x: 10, y: 8, text: "Ton & Sprache", text_color: 0xFF8C00}
+        - button:
+            styles: st_knopf
+            x: 220
+            y: 2
+            width: 120
+            height: 32
+            on_click:
+              - script.execute: {id: sag, n: 21}
+              - script.execute: {id: sag, n: 1}
+            widgets:
+              - label: {align: CENTER, text: "Test", text_font: f16}
+        - button:
+            styles: st_knopf
+            align: TOP_RIGHT
+            x: -4
+            y: 0
+            width: 140
+            height: 40
+            on_click:
+              - lvgl.page.show: seite_menue
+            widgets:
+              - label: {align: CENTER, text: "< Zurück", text_font: f16}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 42
+            width: 464
+            height: 40
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Lautstärke"}
+              - label: {id: s_laut, align: RIGHT_MID, x: -110, text: "--"}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -56, width: 44, height: 32, on_click: [{lambda: 'id(laut) = std::max(10, id(laut) - 10); id(codec).set_volume(id(laut) / 100.0f);'}], widgets: [{label: {align: CENTER, text: "−"}}]}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -6, width: 44, height: 32, on_click: [{lambda: 'id(laut) = std::min(100, id(laut) + 10); id(codec).set_volume(id(laut) / 100.0f);'}], widgets: [{label: {align: CENTER, text: "+"}}]}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 88
+            width: 464
+            height: 40
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Pieptöne und Klicks"}
+              - switch: {id: sw_ton, align: RIGHT_MID, x: -10, width: 56, height: 28, indicator: {checked: {bg_color: 0xFF8C00}}, on_change: [{lambda: 'id(ton_an) = x;'}]}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 134
+            width: 464
+            height: 40
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Sprachausgabe"}
+              - switch: {id: sw_sprache, align: RIGHT_MID, x: -10, width: 56, height: 28, indicator: {checked: {bg_color: 0xFF8C00}}, on_change: [{lambda: 'id(sprache_an) = x;'}]}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 180
+            width: 464
+            height: 40
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Ansage „Kolben bereit“"}
+              - switch: {id: sw_bereit, align: RIGHT_MID, x: -10, width: 56, height: 28, indicator: {checked: {bg_color: 0xFF8C00}}, on_change: [{lambda: 'id(ans_bereit) = x;'}]}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 226
+            width: 464
+            height: 40
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Ansage Standby / Aus / Schlafen"}
+              - switch: {id: sw_standby, align: RIGHT_MID, x: -10, width: 56, height: 28, indicator: {checked: {bg_color: 0xFF8C00}}, on_change: [{lambda: 'id(ans_standby) = x;'}]}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 272
+            width: 464
+            height: 40
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Ansage Fehler / keine Spitze"}
+              - switch: {id: sw_fehler, align: RIGHT_MID, x: -10, width: 56, height: 28, indicator: {checked: {bg_color: 0xFF8C00}}, on_change: [{lambda: 'id(ans_fehler) = x;'}]}
+
+    # ================= System =================
+    - id: seite_system
+      bg_color: 0x000000
+      scrollable: false
+      widgets:
+        - label: {x: 10, y: 8, text: "System", text_color: 0xFF8C00}
+        - button:
+            styles: st_knopf
+            align: TOP_RIGHT
+            x: -4
+            y: 0
+            width: 140
+            height: 40
+            on_click:
+              - lvgl.page.show: seite_menue
+            widgets:
+              - label: {align: CENTER, text: "< Zurück", text_font: f16}
+        - label: {id: t_system, x: 14, y: 50, text: "", text_font: f20}
