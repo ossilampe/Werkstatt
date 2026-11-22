@@ -1,18 +1,25 @@
 # T12 Lötstation – Lötspitzen-Profile
-# Eine Zeile pro Spitze:  - Name, Temperatur 1, Temperatur 2, Temperatur 3   (°C)
-#   Temperatur 1   = wird beim Auswählen als Solltemperatur gesetzt
-#   Temperatur 1-3 = liegen dann auf den drei Festwert-Tasten der Hauptseite
+# Eine Zeile pro Spitze:
+#   - Name, T1, T2, T3, Standby °C, Standby min, Schlafen min
+#   T1            = wird beim Auswählen als Solltemperatur gesetzt
+#   T1-T3         = liegen dann auf den drei Festwert-Tasten der Hauptseite (150-450 °C)
+#   Standby °C    = Temperatur im Standby (100-300 °C)
+#   Standby min   = Minuten ohne Bewegung bis Standby (0 = nie Standby, max. 60)
+#   Schlafen min  = Minuten bis Schlafen/Heizung aus (1-120)
+# Die letzten drei sind freiwillig: fehlen sie, bleiben die Werte aus
+# Menü -> Kolben & Standby. Von Hand im Menü verstellt gilt bis zur nächsten Spitzenwahl.
 # Die Station lädt die Datei beim Start, alle 10 Minuten und im Menü
 # "Festwerte -> Profile neu laden". Zeilen mit # werden ignoriert. Max. 20 Spitzen,
-# Namen max. 16 Zeichen, Temperaturen 150-450 °C.
+# Namen max. 16 Zeichen.
 
-# --- Testwerte (gut erkennbar) ---
-- TEST 1, 250, 260, 270
+# --- Testwerte (gut erkennbar; TEST 1 mit kurzen Zeiten: Standby nach 1 min, Schlafen nach 3 min,
+#     TEST 2 ohne Standby-Werte = Modulwerte bleiben) ---
+- TEST 1, 250, 260, 270, 160, 1, 3
 - TEST 2, 300, 310, 320
 
 # --- Beispiele ---
-- BC2, 330, 300, 360
-- K, 350, 320, 380
-- D24, 340, 310, 370
-- ILS, 300, 280, 330
-- BL, 320, 290, 350
+- BC2, 330, 300, 360, 180, 5, 20
+- K, 350, 320, 380, 200, 5, 20
+- D24, 340, 310, 370, 180, 5, 20
+- ILS, 300, 280, 330, 150, 3, 15
+- BL, 320, 290, 350, 180, 5, 20

@@ -23,6 +23,7 @@ struct Kolben {
   int cfg[CFG_N] = {0};
   bool cfg_ok = false;        // $CFG empfangen
   bool cfg_geaendert = false; // im RAM geändert, noch nicht gespeichert
+  int prof_cfg[3] = {-1, -1, -1};  // vom Spitzenprofil gewünscht: Standby °C, Standby s, Schlafen s (-1 = Modulwert lassen)
   // Wunsch des Bedieners (ESP ist der Chef)
   bool w_ein = false;         // nach Neustart immer AUS
   int code_alt = -1;          // letzter Zustand (für Ansagen)
@@ -98,11 +99,15 @@ inline std::vector<uint8_t> text(const char *t) { return std::vector<uint8_t>(t,
 
 // Befehle an das Modul: Solltemperatur + Ein/Aus (dient zugleich als Lebenszeichen)
 inline std::vector<uint8_t> befehl(int i, int soll) {
-  char b[48];
-  if (online(i) && !K[i].cfg_ok)
-    snprintf(b, sizeof(b), "S %d\nE %d\nG\n", soll, K[i].w_ein ? 1 : 0);   // Einstellungen nachfordern
-  else
-    snprintf(b, sizeof(b), "S %d\nE %d\n", soll, K[i].w_ein ? 1 : 0);
+  Kolben &k = K[i];
+  char b[128];
+  int n = snprintf(b, sizeof(b), "S %d\nE %d\n", soll, k.w_ein ? 1 : 0);
+  if (online(i) && !k.cfg_ok)
+    n += snprintf(b + n, sizeof(b) - n, "G\n");                              // Einstellungen nachfordern
+  else if (online(i))
+    for (int c = 0; c < 3; c++)                                               // Werte aus dem Spitzenprofil
+      if (k.prof_cfg[c] >= 0 && k.cfg[c] != k.prof_cfg[c])
+        n += snprintf(b + n, sizeof(b) - n, "C %d %d\n", c, k.prof_cfg[c]);
   return text(b);
 }
 
@@ -168,10 +173,12 @@ inline bool restzeit(int i, float &anteil, uint32_t &farbe) {
 inline bool in_hand(int i, int s) { return online(i) && K[i].w_ein && K[i].griff < s; }
 
 // ---------------------------------------------------------------- Spitzenprofile
-// Aus Home Assistant: /config/www/t12_profile.yaml, Zeilen "- Name, T1, T2, T3"
+// Aus Home Assistant: /config/www/t12_profile.yaml, Zeilen
+//   "- Name, T1, T2, T3[, Standby °C, Standby min, Schlafen min]"
 struct Profil {
   std::string name;
   int t[3];
+  int cfg[3] = {-1, -1, -1};  // Standby °C, Standby s, Schlafen s (-1 = nicht angegeben)
 };
 inline std::vector<Profil> profile;
 inline int popup = -1;        // Kolben, für den gerade die Profilauswahl offen ist (-1 = keine)
@@ -182,11 +189,59 @@ inline std::string trim(const std::string &s) {
   return a == std::string::npos ? "" : s.substr(a, b - a + 1);
 }
 
+// ---- Kopie der Profile im Flash (NVS): gilt, wenn Home Assistant beim Einschalten nicht erreichbar ist
+constexpr int PROFIL_MAX = 20;
+struct ProfilFlash {
+  uint8_t anzahl;
+  struct {
+    char name[17];
+    int16_t t[3];
+    int16_t cfg[3];
+  } p[PROFIL_MAX];
+};
+inline esphome::ESPPreferenceObject &profil_pref() {
+  static esphome::ESPPreferenceObject pref = esphome::global_preferences->make_preference<ProfilFlash>(0x54313250UL, true);
+  return pref;
+}
+inline ProfilFlash profil_flash_packen() {
+  ProfilFlash f;
+  memset(&f, 0, sizeof(f));
+  f.anzahl = (uint8_t) std::min((int) profile.size(), PROFIL_MAX);
+  for (int j = 0; j < f.anzahl; j++) {
+    strncpy(f.p[j].name, profile[j].name.c_str(), 16);
+    for (int c = 0; c < 3; c++) { f.p[j].t[c] = profile[j].t[c]; f.p[j].cfg[c] = profile[j].cfg[c]; }
+  }
+  return f;
+}
+// nur schreiben, wenn sich etwas geändert hat (schont den Flash)
+inline void profile_speichern() {
+  ProfilFlash neu = profil_flash_packen(), alt;
+  if (profil_pref().load(&alt) && memcmp(&neu, &alt, sizeof(neu)) == 0) return;
+  if (profil_pref().save(&neu)) esphome::global_preferences->sync();
+  ESP_LOGI("t12", "Spitzenprofile im Flash gespeichert (%d)", neu.anzahl);
+}
+// beim Start: Profile aus dem Flash holen (HA liefert später ggf. neuere)
+inline int profile_aus_flash() {
+  ProfilFlash f;
+  if (!profil_pref().load(&f) || f.anzahl == 0 || f.anzahl > PROFIL_MAX) return 0;
+  std::vector<Profil> neu;
+  for (int j = 0; j < f.anzahl; j++) {
+    Profil q;
+    f.p[j].name[16] = 0;
+    q.name = f.p[j].name;
+    for (int c = 0; c < 3; c++) { q.t[c] = f.p[j].t[c]; q.cfg[c] = f.p[j].cfg[c]; }
+    neu.push_back(q);
+  }
+  profile = neu;
+  ESP_LOGI("t12", "%d Spitzenprofile aus dem Flash", f.anzahl);
+  return f.anzahl;
+}
+
 // Datei auswerten; gibt die Zahl der Profile zurück (alte Liste bleibt bei Fehler erhalten)
 inline int profile_laden(const std::string &text) {
   std::vector<Profil> neu;
   size_t pos = 0;
-  while (pos < text.size() && neu.size() < 20) {
+  while (pos < text.size() && (int) neu.size() < PROFIL_MAX) {
     size_t ende = text.find('\n', pos);
     if (ende == std::string::npos) ende = text.size();
     std::string z = trim(text.substr(pos, ende - pos));
@@ -198,14 +253,20 @@ inline int profile_laden(const std::string &text) {
     Profil p;
     p.name = trim(z.substr(0, k1));
     if (p.name.empty() || p.name.size() > 16) continue;
-    int n = sscanf(z.c_str() + k1 + 1, " %d , %d , %d", &p.t[0], &p.t[1], &p.t[2]);
+    int st = -1, sm = -1, sl = -1;
+    int n = sscanf(z.c_str() + k1 + 1, " %d , %d , %d , %d , %d , %d", &p.t[0], &p.t[1], &p.t[2], &st, &sm, &sl);
     if (n < 1) continue;
     for (int j = n; j < 3; j++) p.t[j] = p.t[0];
     bool ok = true;
     for (int j = 0; j < 3; j++) if (p.t[j] < 150 || p.t[j] > 450) ok = false;
-    if (ok) neu.push_back(p);
+    if (!ok) continue;
+    // optionale Standby-Werte; ungültige oder fehlende bleiben -1 (Modulwert bleibt)
+    if (n >= 4 && st >= 100 && st <= 300) p.cfg[0] = st;
+    if (n >= 5 && sm >= 0 && sm <= 60) p.cfg[1] = sm * 60;          // 0 = nie Standby
+    if (n >= 6 && sl >= 1 && sl <= 120) p.cfg[2] = sl * 60;
+    neu.push_back(p);
   }
-  if (!neu.empty()) profile = neu;
+  if (!neu.empty()) { profile = neu; profile_speichern(); }
   ESP_LOGI("t12", "%d Spitzenprofile geladen", (int) neu.size());
   return (int) neu.size();
 }
@@ -214,8 +275,9 @@ inline std::string profil_liste() {
   std::string s;
   for (size_t j = 0; j < profile.size(); j++) {
     if (j) s += "\n";
-    char b[40];
+    char b[64];
     snprintf(b, sizeof(b), "%s  (%d °C)", profile[j].name.c_str(), profile[j].t[0]);
+    if (profile[j].cfg[0] >= 0) snprintf(b + strlen(b) - 1, sizeof(b) - strlen(b) + 1, " / %d)", profile[j].cfg[0]);
     s += b;
   }
   return s;
@@ -224,6 +286,14 @@ inline std::string profil_liste() {
 inline const Profil *profil(int idx) {
   return (idx >= 0 && idx < (int) profile.size()) ? &profile[idx] : nullptr;
 }
+
+// Standby-Wünsche des gewählten Profils übernehmen (p = nullptr: Profile aus -> Modulwerte lassen)
+inline void profil_cfg(int i, const Profil *p) {
+  for (int c = 0; c < 3; c++) K[i].prof_cfg[c] = p ? p->cfg[c] : -1;
+}
+
+// Wert kommt gerade aus dem Spitzenprofil?
+inline bool cfg_vom_profil(int i, int n) { return n < 3 && K[i].prof_cfg[n] >= 0; }
 
 // Spitzenwechsel: "keine Spitze" und danach wieder eine Spitze -> Kolbennummer, sonst -1
 inline int spitzen_wechsel() {

@@ -42,7 +42,7 @@ class Seite:
         self.el.append('<circle cx="%g" cy="%g" r="11" fill="#FFFFFF"/>' % (x + (42 if an else 14), y + 14))
 
     def zurueck(self):
-        self.knopf(W - 144, 0, 140, 40, "< Zurück", size=16)
+        self.knopf(W - 128, 0, 124, 40, "< Zurück", size=16)
 
     def zeile(self, y, h, name, wert, plusminus=True, wert_farbe="#FFFFFF"):
         self.rect(8, y, 464, h, KACHEL, 8)
@@ -123,7 +123,7 @@ def menue():
     s.text(10, 28, "Menü", 20, OR)
     s.zurueck()
     kach = [(8, 42, 228, OR, "Kolben & Standby", "Standby 180 °C"),
-            (244, 42, 228, HBLAU, "Lüfter & Absaugung", "Absaugung Auto · 60 %"),
+            (244, 42, 228, HBLAU, "Lüfter & Absaugung", "Absaugung Auto + Hand · 60 %"),
             (8, 134, 228, GRUEN, "Ton & Sprache", "Lautstärke 70 % · Ansagen an"),
             (244, 134, 228, VIOL, "Festwerte", "280 · 330 · 380 °C · Profile"),
             (8, 226, 464, GR, "System", "Module · WLAN · Firmware")]
@@ -139,8 +139,8 @@ def kolben_standby():
     s = Seite("04-kolben-standby", "Werte liegen im Modul, gespeichert beim Verlassen der Seite")
     s.text(10, 28, "Kolben & Standby", 20, OR)
     if ANZ == 2:
-        s.knopf(190, 2, 80, 32, "A", OR, "#000000", 16)
-        s.knopf(276, 2, 80, 32, "B", size=16)
+        s.knopf(170, 2, 76, 32, "A", OR, "#000000", 16)
+        s.knopf(252, 2, 76, 32, "B", size=16)
     s.zurueck()
     for i, (n, w) in enumerate([("Standby-Temperatur", "180 °C"), ("Standby nach", "3 min"), ("Schlafen nach", "10 min"),
                                 ("Boost", "+50 °C"), ("Boost-Dauer", "60 s")]):
@@ -150,25 +150,26 @@ def kolben_standby():
 
 
 def luefter():
-    s = Seite("05-luefter-absaugung", "Absaugung Auto: läuft, solange ein Kolben bewegt wird, + Nachlauf")
+    s = Seite("05-luefter-absaugung", "Absaugung: Auto → Hand (IR) → Auto + Hand → Immer an → Aus, je eigener Nachlauf")
     s.text(10, 28, "Lüfter & Absaugung", 20, OR)
     s.zurueck()
-    s.rect(8, 42, 464, 40, KACHEL, 8)
-    s.text(20, 69, "Absaugung", 20)
-    s.knopf(8 + 464 - 146, 46, 140, 32, "Auto", color=HBLAU)
-    s.zeile(86, 40, "Drehzahl", "60 %")
-    s.zeile(130, 40, "Nachlauf", "10 s")
-    s.text(14, 190, "Absaugung läuft gerade mit 60 %", 16, GR)
-    s.zeile(198, 40, "Netzteil-Lüfter ab", "35 °C")
-    s.zeile(242, 40, "volle Drehzahl ab", "50 °C")
-    s.text(14, 306, "Netzteil 38.4 °C – Lüfter 44 %", 16, GR)
+    s.rect(8, 42, 464, 36, KACHEL, 8)
+    s.text(20, 67, "Absaugung", 20)
+    s.knopf(8 + 464 - 176, 45, 170, 30, "Auto + Hand", color=HBLAU)
+    s.zeile(80, 36, "Drehzahl", "60 %")
+    s.zeile(118, 36, "Nachlauf Kolben", "10 s")
+    s.zeile(156, 36, "Nachlauf Hand (IR)", "30 s")
+    s.text(14, 212, "Absaugung läuft gerade mit 60 % · Hand erkannt", 16, GR)
+    s.zeile(216, 36, "Netzteil-Lüfter ab", "35 °C")
+    s.zeile(254, 36, "volle Drehzahl ab", "50 °C")
+    s.text(14, 310, "Netzteil 38.4 °C – Lüfter 44 %", 16, GR)
     return s
 
 
 def ton():
     s = Seite("06-ton-sprache", "Lautsprecher des Displays, Ansagen mit deutscher Stimme")
     s.text(10, 28, "Ton & Sprache", 20, OR)
-    s.knopf(220, 2, 120, 32, "Test", size=16)
+    s.knopf(200, 2, 120, 32, "Test", size=16)
     s.zurueck()
     s.zeile(42, 40, "Lautstärke", "70 %")
     for i, (t, an) in enumerate([("Pieptöne und Klicks", True), ("Sprachausgabe", True), ("Ansage „Kolben bereit“", True),
@@ -241,7 +242,7 @@ def hinweis():
 
 # ---------------------------------------------------------------- Anschlussplan
 def anschlussplan():
-    b, h = 1100, 760 if ANZ == 2 else 660
+    b, h = 1100, 790 if ANZ == 2 else 700
     el = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" width="%d" height="%d">' % (b, h, b, h),
           '<rect width="%d" height="%d" fill="#FFFFFF"/>' % (b, h)]
 
@@ -262,7 +263,7 @@ def anschlussplan():
     pins = [("5V", 2, "#C62828"), ("GND", 3, "#000000"), ("GPIO21", 5, "#6A1B9A"), ("GPIO38", 7, "#1565C0"),
             ("GPIO39", 9, "#1565C0"), ("GPIO40", 11, "#2E7D32"), ("GPIO41", 13, "#2E7D32"), ("GPIO42", 15, "#2E7D32"),
             ("GPIO17", 16, "#E65100"), ("GPIO18", 18, "#E65100"), ("GPIO47", 21, "#00838F"), ("GPIO48", 23, "#00838F"),
-            ("3V3", 31, "#C62828")]
+            ("GPIO44", 27, "#AD1457"), ("3V3", 31, "#C62828")]
     if ANZ == 1:
         pins = [p for p in pins if p[0] not in ("GPIO38", "GPIO39")]
     box(40, 30, 300, 60 + len(pins) * 40, "Waveshare ESP32-S3 Touch-LCD 3.5", "#333333", ["Stiftleiste hinten (2 × 16, RM 2,54)"])
@@ -294,10 +295,14 @@ def anschlussplan():
     box(640, yb, 420, 80, "DS18B20 (am Netzteil)", "#6A1B9A", ["DATA → GPIO21 · 4,7 kΩ von DATA nach 3V3", "VDD → 3V3 · GND → GND"])
     linie(340, py["GPIO21"], 640, yb + 45, "#6A1B9A")
     yb += 100
-    box(640, yb, 420, 110, "Lüfter 12 V (je AO3400 low-side)", "#00838F",
-        ["GPIO47 → 100 Ω → Gate (100 kΩ Gate–GND) → Netzteil-Lüfter", "GPIO48 → 100 Ω → Gate → Absaugung (Cinch vorne)", "SS14 Freilauf parallel zum Lüfter · 12 V aus LM2596"])
+    box(640, yb, 420, 110, "Lüfter 12 V (je IRLML6344 low-side)", "#00838F",
+        ["GPIO47 → 100 Ω → Gate (100 kΩ Gate–GND) → Netzteil-Lüfter", "GPIO48 → 100 Ω → Gate → Absaugung (GX12-5 Pin 1/2)", "SB 120 Freilauf parallel zum Lüfter · 12 V aus LM2596"])
     linie(340, py["GPIO47"], 640, yb + 45, "#00838F")
     linie(340, py["GPIO48"], 640, yb + 65, "#00838F")
+    yb += 130
+    box(640, yb, 420, 80, "IR-Sensor Absaugung (GX12-5 Pin 3–5)", "#AD1457",
+        ["OUT → 1 kΩ → GPIO44 · 10 kΩ GPIO44 → GND", "Pin 3 VCC → 3V3 (nicht 5 V!) · Pin 4 OUT · Pin 5 GND"])
+    linie(340, py["GPIO44"], 640, yb + 45, "#AD1457")
     # Versorgung
     yv = 100 + len(pins) * 40 + 20
     box(40, yv, 560, 80, "Versorgung", "#C62828",

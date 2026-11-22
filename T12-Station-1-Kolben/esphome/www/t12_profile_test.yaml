@@ -3,10 +3,15 @@
 # Die Werte sind absichtlich "krumm", damit man am Display sofort sieht,
 # dass das Profil übernommen wurde.
 #
-#   - Name, Temperatur 1, Temperatur 2, Temperatur 3
-#   Temperatur 1   = wird beim Auswählen als Solltemperatur gesetzt
-#   Temperatur 1-3 = liegen dann auf den drei Festwert-Tasten der Hauptseite
+#   - Name, T1, T2, T3, Standby °C, Standby min, Schlafen min
+#   T1            = wird beim Auswählen als Solltemperatur gesetzt
+#   T1-T3         = liegen dann auf den drei Festwert-Tasten der Hauptseite
+#   Standby °C / Standby min / Schlafen min = freiwillig, gehen ans Modul
+#
+# TEST 1: Standby 160 °C schon nach 1 min, Schlafen nach 3 min (schnell sichtbar)
+# TEST 2: ohne Standby-Werte -> die Werte aus Menü "Kolben & Standby" bleiben
+# TEST 3: nie Standby (0), Schlafen nach 10 min, Standby-Temperatur 210 °C
 
-- TEST 1, 250, 260, 270
+- TEST 1, 250, 260, 270, 160, 1, 3
 - TEST 2, 300, 310, 320
-- TEST 3, 355, 365, 375
+- TEST 3, 355, 365, 375, 210, 0, 10

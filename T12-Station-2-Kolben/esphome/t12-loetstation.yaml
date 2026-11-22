@@ -16,7 +16,8 @@
 #    kurz drücken = Kolben A/B wechseln (in Menüs: zurück), lang drücken = Menü
 #
 #  Lüfter (12 V, über AO3400 low-side, 25 kHz PWM):
-#    Netzteil-Lüfter  GPIO47     Absaugung (Cinch vorne)  GPIO48
+#    Netzteil-Lüfter  GPIO47     Absaugung (GX12-5 vorne, Pin 1/2)  GPIO48
+#  IR-Sensor Absaugung (GX12-5 Pin 3-5, HIGH bei Hand)  GPIO44  (1 kΩ in Reihe, 10 kΩ nach GND)
 #  DS18B20 am Netzteil: GPIO21 (4,7 kΩ nach 3,3 V)
 #
 #  Ton: ES8311 + Lautsprecher des Displays, Ansagen als WAV in t12/sound (Windows-Stimme "Hedda")
@@ -24,7 +25,7 @@
 #  Testseite (erste Version): W:\archive\t12-loetstation_2026-11-19_testseite.yaml
 # =====================================================================
 substitutions:
-  fw_version: "2026.11.20"
+  fw_version: "2026.11.20e"
   # 2 = zwei Kolben (Kacheln A und B), 1 = ein Kolben (eine breite Kachel, Modul B entfällt)
   anzahl_kolben: "2"
   # Adresse deines Home Assistant (für die Spitzenprofile in /config/www/t12_profile.yaml)
@@ -45,6 +46,8 @@ esphome:
           }
           id(codec).set_volume(id(laut) / 100.0f);
           t12::anzahl = ${anzahl_kolben};
+          id(prof_anzahl) = t12::profile_aus_flash();   // Profile auch ohne WLAN
+          id(profil_cfg_setzen).execute();
           if (t12::anzahl == 1) {
             t12::auswahl = 0;
             lv_obj_add_flag(id(kachel_b), LV_OBJ_FLAG_HIDDEN);
@@ -73,7 +76,9 @@ psram:
 logger:
   level: INFO
 
+# Ohne WLAN / Home Assistant NICHT neu starten (Standard wäre nach 15 min -> Kolben gingen aus)
 api:
+  reboot_timeout: 0s
 
 ota:
   - platform: esphome
@@ -81,6 +86,7 @@ ota:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+  reboot_timeout: 0s
 
 # ---------------------------------------------------------------------
 #  Display / Touch (wie Labornetzteil / Heizungs-Display)
@@ -272,8 +278,10 @@ globals:
   # Solltemperaturen bleiben über Neustart erhalten, EIN/AUS nicht (immer AUS)
   - {id: soll_a, type: int, restore_value: true, initial_value: '330'}
   - {id: soll_b, type: int, restore_value: true, initial_value: '330'}
-  # Absaugung: Modus 0 Auto (Kolben in der Hand), 1 immer an, 2 aus
+  # Absaugung: Modus 0 Auto (Kolben in der Hand), 1 immer an, 2 aus, 3 Hand (IR-Sensor), 4 Auto + Hand
   - {id: abs_modus, type: int, restore_value: true, initial_value: '0'}
+  - {id: abs_ir_nachlauf, type: int, restore_value: true, initial_value: '30'}
+  - {id: ir_zuletzt, type: uint32_t, initial_value: '0'}
   - {id: abs_drehzahl, type: int, restore_value: true, initial_value: '60'}
   - {id: abs_nachlauf, type: int, restore_value: true, initial_value: '10'}
   # Spitzenprofile: an/aus, gewähltes Profil je Kolben (-1 = keins), Anzahl geladen
@@ -362,6 +370,7 @@ script:
               - lambda: |-
                   if (response->status_code == 200) id(prof_anzahl) = t12::profile_laden(body);
                   else ESP_LOGW("t12", "Profile: HTTP %d", response->status_code);
+                  id(profil_cfg_setzen).execute();
           on_error:
             then:
               - logger.log: "Profile: Home Assistant nicht erreichbar"
@@ -396,8 +405,15 @@ script:
           }
           t12::popup = -1;
           t12::sichtbar(id(pop_layer), false);
+      - script.execute: profil_cfg_setzen
       - script.execute: senden
       - script.execute: anzeigen
+  # Standby °C / Standby-Zeit / Schlafzeit aus den gewählten Profilen (befehl() schickt sie ans Modul, nur RAM)
+  - id: profil_cfg_setzen
+    then:
+      - lambda: |-
+          for (int i = 0; i < 2; i++)
+            t12::profil_cfg(i, id(profile_an) ? t12::profil(i == 0 ? id(prof_a) : id(prof_b)) : nullptr);
   - id: popup_zu
     then:
       - lambda: |-
@@ -509,9 +525,17 @@ script:
       - lambda: |-
           uint32_t jetzt = millis();
           // Absaugung
+          bool kolben = t12::in_hand(0, id(abs_nachlauf)) || t12::in_hand(1, id(abs_nachlauf));
+          bool hand = id(ir_hand).state ||
+                      (id(ir_zuletzt) != 0 && jetzt - id(ir_zuletzt) < (uint32_t) id(abs_ir_nachlauf) * 1000UL);
           bool an = false;
-          if (id(abs_modus) == 1) an = true;
-          else if (id(abs_modus) == 0) an = t12::in_hand(0, id(abs_nachlauf)) || t12::in_hand(1, id(abs_nachlauf));
+          switch (id(abs_modus)) {
+            case 0: an = kolben; break;            // Auto: Kolben in der Hand
+            case 1: an = true; break;              // immer an
+            case 3: an = hand; break;              // Hand vor dem IR-Sensor
+            case 4: an = kolben || hand; break;    // beides
+            default: an = false;                   // aus
+          }
           int soll_abs = an ? id(abs_drehzahl) : 0;
           if (soll_abs > 0 && id(abs_prozent) == 0) id(abs_seit) = jetzt;            // Anlauf
           id(abs_prozent) = soll_abs;
@@ -550,6 +574,7 @@ script:
           if (w < 0) w = 0;
           k.cfg[n] = w;                       // sofort anzeigen, Modul bestätigt mit $CFG
           k.cfg_geaendert = true;
+          if (n < 3) k.prof_cfg[n] = -1;      // von Hand verstellt: Profilwert gilt nicht mehr
           char b[24];
           snprintf(b, sizeof(b), "C %d %d", n, w);
           id(an_modul).execute(i, std::string(b));
@@ -634,8 +659,8 @@ script:
           const t12::Kolben &ka = t12::K[0];
           if (ka.cfg_ok) snprintf(b, sizeof(b), "Standby %d °C", ka.cfg[t12::CFG_STBY_T]); else strcpy(b, "Werte vom Modul");
           t12::setze_text(id(m_info_kolben), b);
-          static const char *am[] = {"Auto", "immer an", "aus"};
-          snprintf(b, sizeof(b), "Absaugung %s · %d %%", am[id(abs_modus) % 3], id(abs_drehzahl));
+          static const char *am[] = {"Auto", "immer an", "aus", "Hand (IR)", "Auto + Hand"};
+          snprintf(b, sizeof(b), "Absaugung %s · %d %%", am[id(abs_modus) % 5], id(abs_drehzahl));
           t12::setze_text(id(m_info_luefter), b);
           snprintf(b, sizeof(b), "Lautstärke %d %% · %s", id(laut), id(sprache_an) ? "Ansagen an" : "Ansagen aus");
           t12::setze_text(id(m_info_ton), b);
@@ -656,23 +681,26 @@ script:
               snprintf(b, sizeof(b), "%d min", k.cfg[2] / 60); t12::setze_text(v[2], b);
               snprintf(b, sizeof(b), "+%d °C", k.cfg[3]); t12::setze_text(v[3], b);
               snprintf(b, sizeof(b), "%d s", k.cfg[4]); t12::setze_text(v[4], b);
-              t12::setze_text(id(t_kolben_hinweis), k.cfg_geaendert ? "wird beim Verlassen gespeichert" : "im Modul gespeichert");
+              t12::setze_text(id(t_kolben_hinweis), k.cfg_geaendert ? "wird beim Verlassen gespeichert"
+                                : (t12::cfg_vom_profil(t12::cfg_kolben, 0) || t12::cfg_vom_profil(t12::cfg_kolben, 1) || t12::cfg_vom_profil(t12::cfg_kolben, 2))
+                                  ? "Standby-Werte aus dem Spitzenprofil" : "im Modul gespeichert");
             }
           }
 
           // Seite Lüfter & Absaugung
           if (lv_scr_act() == id(seite_luefter)->obj) {
-            static const char *modi[] = {"Auto", "Immer an", "Aus"};
-            t12::setze_text(id(l_modus_t), modi[id(abs_modus) % 3]);
+            static const char *modi[] = {"Auto", "Immer an", "Aus", "Hand (IR)", "Auto + Hand"};
+            t12::setze_text(id(l_modus_t), modi[id(abs_modus) % 5]);
             snprintf(b, sizeof(b), "%d %%", id(abs_drehzahl)); t12::setze_text(id(l_drehzahl), b);
             snprintf(b, sizeof(b), "%d s", id(abs_nachlauf)); t12::setze_text(id(l_nachlauf), b);
+            snprintf(b, sizeof(b), "%d s", id(abs_ir_nachlauf)); t12::setze_text(id(l_ir_nachlauf), b);
             snprintf(b, sizeof(b), "%d °C", id(nt_start)); t12::setze_text(id(l_start), b);
             snprintf(b, sizeof(b), "%d °C", id(nt_voll)); t12::setze_text(id(l_voll), b);
             if (std::isnan(id(nt_temp).state)) snprintf(b, sizeof(b), "Fühler fehlt – Lüfter %d %%", id(nt_prozent));
             else snprintf(b, sizeof(b), "Netzteil %.1f °C – Lüfter %d %%", id(nt_temp).state, id(nt_prozent));
             t12::setze_text(id(l_nt_ist), b);
-            snprintf(b, sizeof(b), "Absaugung läuft gerade mit %d %%", id(abs_prozent));
-            t12::setze_text(id(l_abs_ist), id(abs_prozent) ? b : "Absaugung steht");
+            snprintf(b, sizeof(b), "Absaugung läuft gerade mit %d %%%s", id(abs_prozent), id(ir_hand).state ? " · Hand erkannt" : "");
+            t12::setze_text(id(l_abs_ist), id(abs_prozent) ? b : (id(ir_hand).state ? "Absaugung steht · Hand erkannt" : "Absaugung steht"));
           }
 
           // Seite Ton & Sprache
@@ -796,6 +824,19 @@ sensor:
     lambda: 'return id(abs_prozent);'
 
 binary_sensor:
+  # IR-Sensor der Absaugung: HIGH = Hand erkannt (extern 1 kΩ in Reihe, 10 kΩ nach GND)
+  - platform: gpio
+    id: ir_hand
+    name: "Absaugung Hand-Sensor"
+    pin: {number: GPIO44, mode: {input: true, pulldown: true}}
+    filters:
+      - delayed_on: 50ms
+      - delayed_off: 200ms
+    on_press:
+      - lambda: 'id(ir_zuletzt) = millis();'
+      - script.execute: luefter
+    on_release:
+      - lambda: 'id(ir_zuletzt) = millis();'      # Nachlauf zählt ab dem Wegnehmen der Hand
   - platform: gpio
     id: drehgeber_taster
     pin: {number: GPIO42, inverted: true, mode: {input: true, pullup: true}}
@@ -1112,7 +1153,7 @@ lvgl:
             align: TOP_RIGHT
             x: -4
             y: 0
-            width: 140
+            width: 124
             height: 40
             on_click:
               - lvgl.page.show: seite_haupt
@@ -1196,9 +1237,9 @@ lvgl:
         - button:
             id: kb_a
             styles: st_knopf
-            x: 190
+            x: 170
             y: 2
-            width: 80
+            width: 76
             height: 32
             on_click:
               - script.execute: cfg_speichern
@@ -1208,9 +1249,9 @@ lvgl:
         - button:
             id: kb_b
             styles: st_knopf
-            x: 276
+            x: 252
             y: 2
-            width: 80
+            width: 76
             height: 32
             on_click:
               - script.execute: cfg_speichern
@@ -1222,7 +1263,7 @@ lvgl:
             align: TOP_RIGHT
             x: -4
             y: 0
-            width: 140
+            width: 124
             height: 40
             on_click:
               - lvgl.page.show: seite_menue
@@ -1297,7 +1338,7 @@ lvgl:
             align: TOP_RIGHT
             x: -4
             y: 0
-            width: 140
+            width: 124
             height: 40
             on_click:
               - lvgl.page.show: seite_menue
@@ -1344,7 +1385,7 @@ lvgl:
             height: 40
             widgets:
               - label: {align: LEFT_MID, x: 12, text: "Spitzenprofile aus HA"}
-              - switch: {id: sw_prof, align: RIGHT_MID, x: -10, width: 56, height: 28, indicator: {checked: {bg_color: 0xFF8C00}}, on_change: [{lambda: 'id(profile_an) = x;'}]}
+              - switch: {id: sw_prof, align: RIGHT_MID, x: -10, width: 56, height: 28, indicator: {checked: {bg_color: 0xFF8C00}}, on_change: [{lambda: 'id(profile_an) = x;'}, {script.execute: profil_cfg_setzen}]}
         - obj:
             styles: st_zeile
             x: 8
@@ -1397,7 +1438,7 @@ lvgl:
             align: TOP_RIGHT
             x: -4
             y: 0
-            width: 140
+            width: 124
             height: 40
             on_click:
               - lvgl.page.show: seite_menue
@@ -1408,25 +1449,28 @@ lvgl:
             x: 8
             y: 42
             width: 464
-            height: 40
+            height: 36
             widgets:
               - label: {align: LEFT_MID, x: 12, text: "Absaugung"}
               - button:
                   styles: st_knopf
                   align: RIGHT_MID
                   x: -6
-                  width: 140
-                  height: 32
+                  width: 170
+                  height: 30
                   on_click:
-                    - lambda: 'id(abs_modus) = (id(abs_modus) + 1) % 3;'
+                    # Reihenfolge: Auto -> Hand (IR) -> Auto + Hand -> Immer an -> Aus -> Auto
+                    - lambda: |-
+                        static const int naechster[5] = {3, 2, 0, 4, 1};
+                        id(abs_modus) = naechster[id(abs_modus) % 5];
                   widgets:
                     - label: {id: l_modus_t, align: CENTER, text: "Auto", text_color: 0x4FC3F7}
         - obj:
             styles: st_zeile
             x: 8
-            y: 86
+            y: 80
             width: 464
-            height: 40
+            height: 36
             widgets:
               - label: {align: LEFT_MID, x: 12, text: "Drehzahl"}
               - label: {id: l_drehzahl, align: RIGHT_MID, x: -110, text: "--"}
@@ -1435,21 +1479,32 @@ lvgl:
         - obj:
             styles: st_zeile
             x: 8
-            y: 130
+            y: 118
             width: 464
-            height: 40
+            height: 36
             widgets:
-              - label: {align: LEFT_MID, x: 12, text: "Nachlauf"}
+              - label: {align: LEFT_MID, x: 12, text: "Nachlauf Kolben"}
               - label: {id: l_nachlauf, align: RIGHT_MID, x: -110, text: "--"}
               - button: {styles: st_knopf, align: RIGHT_MID, x: -56, width: 44, height: 32, on_click: [{lambda: 'id(abs_nachlauf) = std::max(0, id(abs_nachlauf) - 5);'}], widgets: [{label: {align: CENTER, text: "−"}}]}
               - button: {styles: st_knopf, align: RIGHT_MID, x: -6, width: 44, height: 32, on_click: [{lambda: 'id(abs_nachlauf) = std::min(120, id(abs_nachlauf) + 5);'}], widgets: [{label: {align: CENTER, text: "+"}}]}
-        - label: {id: l_abs_ist, x: 14, y: 174, text: "", text_font: f16, text_color: 0x8C8C8C}
         - obj:
             styles: st_zeile
             x: 8
-            y: 198
+            y: 156
             width: 464
-            height: 40
+            height: 36
+            widgets:
+              - label: {align: LEFT_MID, x: 12, text: "Nachlauf Hand (IR)"}
+              - label: {id: l_ir_nachlauf, align: RIGHT_MID, x: -110, text: "--"}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -56, width: 44, height: 32, on_click: [{lambda: 'id(abs_ir_nachlauf) = std::max(5, id(abs_ir_nachlauf) - 5);'}], widgets: [{label: {align: CENTER, text: "−"}}]}
+              - button: {styles: st_knopf, align: RIGHT_MID, x: -6, width: 44, height: 32, on_click: [{lambda: 'id(abs_ir_nachlauf) = std::min(600, id(abs_ir_nachlauf) + (id(abs_ir_nachlauf) < 60 ? 5 : 30));'}], widgets: [{label: {align: CENTER, text: "+"}}]}
+        - label: {id: l_abs_ist, x: 14, y: 196, text: "", text_font: f16, text_color: 0x8C8C8C}
+        - obj:
+            styles: st_zeile
+            x: 8
+            y: 216
+            width: 464
+            height: 36
             widgets:
               - label: {align: LEFT_MID, x: 12, text: "Netzteil-Lüfter ab"}
               - label: {id: l_start, align: RIGHT_MID, x: -110, text: "--"}
@@ -1458,15 +1513,15 @@ lvgl:
         - obj:
             styles: st_zeile
             x: 8
-            y: 242
+            y: 254
             width: 464
-            height: 40
+            height: 36
             widgets:
               - label: {align: LEFT_MID, x: 12, text: "volle Drehzahl ab"}
               - label: {id: l_voll, align: RIGHT_MID, x: -110, text: "--"}
               - button: {styles: st_knopf, align: RIGHT_MID, x: -56, width: 44, height: 32, on_click: [{lambda: 'id(nt_voll) = std::max(id(nt_start) + 1, id(nt_voll) - 1);'}], widgets: [{label: {align: CENTER, text: "−"}}]}
               - button: {styles: st_knopf, align: RIGHT_MID, x: -6, width: 44, height: 32, on_click: [{lambda: 'id(nt_voll) = std::min(80, id(nt_voll) + 1);'}], widgets: [{label: {align: CENTER, text: "+"}}]}
-        - label: {id: l_nt_ist, x: 14, y: 290, text: "", text_font: f16, text_color: 0x8C8C8C}
+        - label: {id: l_nt_ist, x: 14, y: 294, text: "", text_font: f16, text_color: 0x8C8C8C}
 
     # ================= Ton & Sprache =================
     - id: seite_ton
@@ -1481,7 +1536,7 @@ lvgl:
         - label: {x: 10, y: 8, text: "Ton & Sprache", text_color: 0xFF8C00}
         - button:
             styles: st_knopf
-            x: 220
+            x: 200
             y: 2
             width: 120
             height: 32
@@ -1495,7 +1550,7 @@ lvgl:
             align: TOP_RIGHT
             x: -4
             y: 0
-            width: 140
+            width: 124
             height: 40
             on_click:
               - lvgl.page.show: seite_menue
@@ -1569,7 +1624,7 @@ lvgl:
             align: TOP_RIGHT
             x: -4
             y: 0
-            width: 140
+            width: 124
             height: 40
             on_click:
               - lvgl.page.show: seite_menue

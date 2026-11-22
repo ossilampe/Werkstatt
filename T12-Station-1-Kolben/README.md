@@ -4,9 +4,11 @@ Lötstation für **T12-Spitzen** mit großem Touch-Display, Drehgeber, deutscher
 
 Die eigentliche Regelung macht eine **fertige, günstige T12-Steuerplatine** (STM32), die eine **eigene Firmware** bekommt und per UART vom ESP32-Display gesteuert wird. Am Modul selbst wird nichts mehr bedient – alles läuft über Touch und Drehgeber.
 
-> **Stand 20.11.2026:** Diese Version ist dieselbe ESPHome-Konfiguration wie die 2-Kolben-Station, nur mit `anzahl_kolben: "1"` (eine breite Kachel, kein Modul B). Die Regelung über ein Modul ist getestet; **die 1-Kolben-Oberfläche selbst wurde noch nicht auf dem Display gebaut** – Lüfter/Absaugung/DS18B20 sind programmiert, die Hardware dafür ist noch nicht aufgebaut.
+> **Stand 22.11.2026:** Station im eigenen 3D-Druck-Gehäuse aufgebaut und mit **einem** Modul getestet (Heizen, Regeln, Standby, alle Menüs, Ansagen, Profile). Lüfter/IR-Sensor/DS18B20 sind programmiert; das Gehäuse der Absaugung folgt.
 
 > Die Variante mit 2 Kolben steht im Ordner [`T12-Station-2-Kolben`](../T12-Station-2-Kolben).  Die Variante mit eigener Platine (KiCad, JLCPCB) liegt in [`T12-Loetstation`](../T12-Loetstation).
+
+![T12-Station im Gehäuse](../T12-Station-2-Kolben/gehaeuse/bilder/foto_front.jpg)
 
 ![Hauptseite](docs/01-hauptseite.svg)
 
@@ -36,10 +38,10 @@ Die eigentliche Regelung macht eine **fertige, günstige T12-Steuerplatine** (ST
 - Einschalten **ohne Kolben/Spitze gesperrt** – Hinweis im Display und Ansage
 - **Standby/Schlafen/Boost** im Modul, einstellbar im Menü; Kalt-Boost (kurz +50 °C beim Aufheizen) mit Anzeige „Soll 280 (330) °C“
 - **Ansagen** (deutsche Stimme): bereit, kühlt ab, schläft, keine Spitze, Fehler, Verbindung unterbrochen, Temperatur gespeichert, Lötstation bereit
-- **Netzteil-Lüfter** nach DS18B20 (Start-/Volllast-Temperatur einstellbar), **Absaugung** Auto (läuft, solange ein Kolben bewegt wird + Nachlauf), immer an, aus
+- **Netzteil-Lüfter** nach DS18B20 (Start-/Volllast-Temperatur einstellbar), **Absaugung** mit 5 Modi: Auto (läuft, solange ein Kolben bewegt wird + Nachlauf), Hand (IR-Sensor an der Absaugung + eigener Nachlauf), Auto + Hand, immer an, aus
 - Menüs springen nach **20 s** ohne Bedienung zur Hauptseite zurück
 - Sicherheit: das Modul regelt selbst; meldet sich der ESP 30 s nicht, geht es in Standby; Übertemperatur/Fehler schaltet das Modul ab
-- Home Assistant: Temperatur, Netzteil-Temperatur, Lüfter, Absaugung, Mediaplayer „Ansage“
+- Home Assistant: Hand-Sensor der Absaugung, Temperatur, Netzteil-Temperatur, Lüfter, Absaugung, Mediaplayer „Ansage“
 
 ## Teile und Hilfsmittel
 
@@ -50,9 +52,11 @@ Die eigentliche Regelung macht eine **fertige, günstige T12-Steuerplatine** (ST
 | Netzteil 24 V | ≥ 4 A | – |
 | T12-Griff(e) + Spitzen | z. B. FX9501-Griff mit Neigungsschalter | – |
 | Drehgeber-Modul KY-040 | CLK, DT, SW, +, − | – |
-| 2 × LM2596 Step-down | 24→5 V (Display), 24→12 V (Lüfter) | – |
+| 2 × LM2596 Step-down | 24→5 V (Display, Pin 2), 24→12 V (Lüfter) – **vor dem Anschließen einstellen** | – |
+| IR-Hindernis-Modul (HIGH bei Erkennung, 3,3 V) + 1 kΩ + 10 kΩ | Hand-Sensor an der Absaugung (GPIO 44) | – |
+| GX12-5 Buchse + Stecker, 5-adriges Kabel | Absaugung: Pin 1 = +12 V, 2 = Lüfter − (geschaltet), 3 = 3,3 V, 4 = OUT, 5 = GND | – |
 | DS18B20 + 4,7 kΩ | Netzteil-Temperatur | – |
-| 2 × AO3400 + 2 × SS14 + 100 Ω + 100 kΩ | Lüfter-Schalter (low-side, 25 kHz PWM) | – |
+| 2 × IRLML6344 (oder AO3400) + 2 × SB 120 (oder SS14) + 100 Ω + 100 kΩ | Lüfter-Schalter (low-side, 25 kHz PWM), siehe [Schaltplan](docs/luefter_schaltplan.svg) | – |
 | Lautsprecher | an den MX1.25-Lautsprecherstecker des Displays | – |
 | Kabel | Dupont-Litzen 22 AWG, dünner Kupferlackdraht 0,1–0,2 mm für den Umbau | – |
 
@@ -129,11 +133,38 @@ GND und 3,3 V findest du mit dem Durchgangsprüfer (GND = Masse, 3,3 V = Kühlfa
 | GPIO 21 (Pin 5) | DS18B20 DATA |
 | GPIO 47 (Pin 21) | Netzteil-Lüfter (über AO3400) |
 | GPIO 48 (Pin 23) | Absaugung (über AO3400) |
-| 5V (Pin 2) | LM2596 5 V (oder USB-C) |
+| 5V (Pin 2) | LM2596 (Display) 5 V (oder USB-C) |
+| GPIO 44 (Pin 27) | IR-Sensor OUT über 1 kΩ (GX12-5 Pin 4), 10 kΩ nach GND |
+| 3V3 (Pin 32) / GND (Pin 30) | IR-Sensor VCC / GND (GX12-5 Pin 3 / 5) |
 
 - **VCC der Module NICHT verbinden** – jedes Modul bekommt seine 3,3 V selbst aus den 24 V. Nur GND gemeinsam.
 - Beide Seiten arbeiten mit 3,3 V, kein Pegelwandler nötig. Sind TX/RX vertauscht, einfach die zwei Leitungen am ESP tauschen.
 - Drehgeber-Modul: **+ an 3,3 V**, nicht 5 V. Dreht er falsch herum: CLK und DT tauschen.
+
+### Versorgung, Lüfter, Absaugung, IR-Sensor und DS18B20
+
+![Schaltplan Lüfter](docs/luefter_schaltplan.svg)
+
+- Je Lüfter ein **N-MOSFET auf der Minus-Seite** (logic level, schaltet mit 3,3 V): **IRLML6344** oder AO3400 (SOT-23, 1 = Gate, 2 = Source, 3 = Drain). **Nicht** IRF520/IRF540 – die brauchen 10 V am Gate.
+- **100 Ω** GPIO → Gate, **100 kΩ** Gate → GND (Lüfter bleiben aus, solange der ESP startet).
+- **Freilaufdiode SB 120** (oder SS14/1N5819) parallel zum Lüfter, **Ring an +12 V**. Bei der Absaugung direkt an Pin 1/2 der GX12-5-Buchse.
+- Absaugung: **MINI TR 1 A träge** in der +12-V-Leitung zu Pin 1 der GX12-5, Pin 2 = geschalteter Minus (Drain Q2, **nicht GND**).
+- **Eine Buchse für die Absaugung: GX12-5** vorne, 5-adriges Kabel zum Absaug-Gehäuse. Pin 1 = +12 V, Pin 2 = Lüfter −, Pin 3 = 3,3 V, Pin 4 = OUT, Pin 5 = GND. Im Absaug-Gehäuse: Pin 1/2 an den Lüfter, Pin 3–5 an das IR-Modul. Nur bei ausgeschalteter Station stecken.
+- **IR-Sensor:** OUT über **1 kΩ** an GPIO 44, **10 kΩ** von GPIO 44 nach GND (ohne Sensor = aus). Das Modul nur mit 3,3 V betreiben.
+- **Display-Versorgung:** zweiter **LM2596 24 V → 5 V** an Pin 2 (5V) und GND. Erst ohne Display auf 5,0 V einstellen.
+- DS18B20 an GPIO 21 mit **4,7 kΩ** von DATA nach 3,3 V.
+- Fertige MOSFET-Module gehen auch (**D4184 / AOD4184**, ohne Optokoppler wegen 25 kHz PWM).
+- Erzeugt mit [`docs/gen_luefter_schaltplan.py`](docs/gen_luefter_schaltplan.py).
+
+### Komplette Verdrahtung – Werkstattblatt
+
+Alles auf einem Blatt zum Ausdrucken: Lüfter-Schaltplan, die Stiftleiste des Displays (alle 32 Pins, was wo dran kommt) und eine Tabelle mit allen Verbindungen.
+
+- [**verdrahtung_komplett.pdf**](docs/verdrahtung_komplett.pdf) (zum Drucken: 4 Blätter A4 quer – Schaltplan, Absaugung mit GX12-5-Belegung, Stiftleiste, Verbindungstabelle)
+- [verdrahtung_komplett.svg](docs/verdrahtung_komplett.svg)
+- Erzeugt mit [`docs/gen_verdrahtung.py`](docs/gen_verdrahtung.py) (`python gen_verdrahtung.py 2` bzw. `1`, braucht vorher `luefter_schaltplan.svg`; erzeugt auch die Druckvorlage `verdrahtung_druck.html`, daraus wird das PDF gedruckt).
+
+![Komplette Verdrahtung](docs/verdrahtung_komplett.svg)
 
 ## ESPHome installieren
 
@@ -150,10 +181,10 @@ Getestet mit **ESPHome 2026.11** (ESP-IDF, LVGL 9). Die Sprachdateien wurden mit
 Eine einfache Textdatei in Home Assistant: **`/config/www/t12_profile.yaml`** (im Datei-Editor unter `www`). Die Station holt sie über `http://<home-assistant>:8123/local/t12_profile.yaml` – beim Start, alle 10 Minuten und mit **Menü → Festwerte → Neu laden**.
 
 ```yaml
-# - Name, Temperatur 1, Temperatur 2, Temperatur 3   (°C)
-- BC2, 330, 300, 360
-- K, 350, 320, 380
-- D24, 340, 310, 370
+# - Name, T1, T2, T3, Standby °C, Standby min, Schlafen min
+- BC2, 330, 300, 360, 180, 5, 20
+- K, 350, 320, 380, 200, 5, 20
+- D24, 340, 310, 370            # ohne Standby-Werte: Werte aus dem Menü bleiben
 ```
 
 | Feld | Bedeutung |
@@ -161,14 +192,21 @@ Eine einfache Textdatei in Home Assistant: **`/config/www/t12_profile.yaml`** (i
 | Name | max. 16 Zeichen, erscheint in der Kachel („A · BC2“) |
 | Temperatur 1 | wird beim Auswählen als **Solltemperatur** gesetzt |
 | Temperatur 1–3 | liegen dann auf den **drei Festwert-Tasten** |
+| Standby °C | Temperatur im Standby, 100–300 °C *(freiwillig)* |
+| Standby min | Minuten ohne Bewegung bis Standby, 0 = nie, max. 60 *(freiwillig)* |
+| Schlafen min | Minuten bis Schlafen (Heizung aus), 1–120 *(freiwillig)* |
+
+Die drei Standby-Werte gehen beim Auswählen der Spitze ans Modul (nur in den Arbeitsspeicher, der Flash wird nicht beschrieben) und erscheinen auch in **Menü → Kolben & Standby** mit dem Hinweis „Standby-Werte aus dem Spitzenprofil“. Wer dort von Hand verstellt, hat Vorrang bis zur nächsten Spitzenwahl. Fehlen die Werte in der Zeile, bleiben die Menüwerte. Nach einem Neustart des Moduls schickt die Station die Profilwerte automatisch erneut.
 
 Regeln: eine Zeile pro Spitze, max. 20 Spitzen, Temperaturen 150–450 °C, Zeilen mit `#` werden ignoriert. Fehlt Temperatur 2/3, wird Temperatur 1 genommen.
 
-**Downloads:** [`t12_profile.yaml`](esphome/www/t12_profile.yaml) (Beispiele + Testwerte) · [`t12_profile_test.yaml`](esphome/www/t12_profile_test.yaml) (nur Testwerte TEST 1–3: 250/260/270, 300/310/320, 355/365/375 – gut am Display erkennbar)
+**Downloads:** [`t12_profile.yaml`](esphome/www/t12_profile.yaml) (Beispiele + Testwerte) · [`t12_profile_test.yaml`](esphome/www/t12_profile_test.yaml) (nur Testwerte TEST 1–3: 250/260/270, 300/310/320, 355/365/375 – gut am Display erkennbar; TEST 1 mit Standby nach 1 min und Schlafen nach 3 min, TEST 2 ohne Standby-Werte, TEST 3 nie Standby)
 
-**So testest du:** Testdatei als `t12_profile.yaml` nach `/config/www/` kopieren → Menü → Festwerte → „Neu laden“ → „3 Spitzen aus Home Assistant“. Dann Spitze ziehen und wieder einstecken → Auswahl erscheint → „TEST 1“ wählen → Soll 250 °C, Tasten 250/260/270, Kachel „A · TEST 1“.
+**So testest du:** Testdatei als `t12_profile.yaml` nach `/config/www/` kopieren → Menü → Festwerte → „Neu laden“ → „3 Spitzen aus Home Assistant“. Dann Spitze ziehen und wieder einstecken → Auswahl erscheint → „TEST 1“ wählen → Soll 250 °C, Tasten 250/260/270, Kachel „A · TEST 1“. Im Menü Kolben & Standby stehen jetzt 160 °C / 1 min / 3 min; nach 1 min Kolben liegen lassen geht er in Standby (gelbe Linie läuft ab).
 
 Profile ausschalten: Menü → Festwerte → „Spitzenprofile aus HA“. Dann gelten die drei eigenen Festwerte.
+
+**Ohne WLAN:** Die Station merkt sich die zuletzt geladenen Profile im Flash des ESP (geschrieben wird nur, wenn sich die Datei geändert hat). Nach dem Einschalten ohne WLAN oder ohne Home Assistant sind die Profile also trotzdem da; Löten, Regeln, Standby, Lüfter und Ansagen laufen ganz normal. Die Station startet ohne WLAN auch nicht neu (`reboot_timeout: 0s`). Es fehlen dann nur das Nachladen geänderter Profile und die Werte in Home Assistant.
 
 ## Bedienung und Menüs
 
@@ -193,7 +231,7 @@ Standby-Temperatur, Standby nach, Schlafen nach, Boost und Boost-Dauer – die W
 ![Kolben & Standby](docs/04-kolben-standby.svg)
 
 ### Lüfter & Absaugung
-Absaugung Auto/immer an/aus, Drehzahl, Nachlauf; Netzteil-Lüfter ab Temperatur X, volle Drehzahl ab Y.
+Absaugung **Auto** (Kolben in der Hand) → **Hand (IR)** → **Auto + Hand** → **Immer an** → **Aus** (Taste schaltet weiter), Drehzahl, **Nachlauf Kolben** (0–120 s) und **Nachlauf Hand (IR)** (5 s – 10 min, zählt ab dem Wegnehmen der Hand); Netzteil-Lüfter ab Temperatur X, volle Drehzahl ab Y.
 
 ![Lüfter & Absaugung](docs/05-luefter-absaugung.svg)
 
@@ -256,7 +294,16 @@ Der ESP schickt alle 2 s Solltemperatur und EIN/AUS als Lebenszeichen. Das Modul
 
 ## Gehäuse
 
-Folgt: eigenes 3D-Druck-Gehäuse (Fusion + STL) im Ordner [`gehaeuse/`](gehaeuse).
+Eigenes 3D-Druck-Gehäuse (Fusion 360), 250 mm breit: schräge Front mit Display, Lautsprecher-Gitter und Drehknopf, oben zwei Kolbenablagen, hinten Lüftergitter für den Netzteil-Lüfter. Es ist für 2 Kolben gezeichnet und passt für einen Kolben unverändert (zweite Ablage/Buchse bleibt frei).
+
+| Station | Fusion 360 |
+|---|---|
+| ![Station](../T12-Station-2-Kolben/gehaeuse/bilder/foto_station.jpg) | ![Render](../T12-Station-2-Kolben/gehaeuse/bilder/render_seite.png) |
+
+- **Druckdateien:** [`Frame_unten.stl`](../T12-Station-2-Kolben/gehaeuse/stl/Frame_unten.stl), [`Frame_oben.stl`](../T12-Station-2-Kolben/gehaeuse/stl/Frame_oben.stl), [`Front.stl`](../T12-Station-2-Kolben/gehaeuse/stl/Front.stl), [`Drehknopf.stl`](../T12-Station-2-Kolben/gehaeuse/stl/Drehknopf.stl)
+- **Zum Ändern:** [`Loetstation_ESP32_Touch_3_5zoll.f3d`](../T12-Station-2-Kolben/gehaeuse/fusion/Loetstation_ESP32_Touch_3_5zoll.f3d) (Fusion 360)
+- Druckbett mindestens 256 mm (z. B. Bambu Lab X1C / P1S), Material PETG oder ASA empfohlen. Details: [Gehäuse-README](../T12-Station-2-Kolben/gehaeuse/README.md)
+- Das Gehäuse der Absaugung (Lüfter + IR-Sensor an GX12-5) folgt.
 
 ## Dateien
 
@@ -273,7 +320,7 @@ T12-Station-1-Kolben/
 │  └─ BAUEN.md                 selbst übersetzen
 ├─ werkzeuge/                  OpenOCD-Skripte: sichern, Drahttest, flashen, zurück
 ├─ docs/                       Bilder, Anschlussplan, Bild-Generator
-└─ gehaeuse/                   folgt (Fusion, STL, Fotos)
+└─ gehaeuse/                  Verweis auf das Gehäuse der 2-Kolben-Variante
 ```
 
 Grundlage der Modul-Firmware: [deividAlfa/stm32_soldering_iron_controller](https://github.com/deividAlfa/stm32_soldering_iron_controller) (GPL). Unsere Erweiterung (UART-Fernsteuerung) liegt als eigene Dateien + Patch bei.
