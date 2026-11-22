@@ -1,0 +1,1014 @@
+# =====================================================================
+#  Labornetzteil 0-60 V / 0-20 A
+#  Waveshare ESP32-S3-Touch-LCD-3.5  +  XY6020L (Modbus RTU ueber TTL)
+#
+#  XY6020L COM-Stecker -> Waveshare-Leiste
+#     TX  -> GPIO18 (RX)   ! vorher Pegel messen, bei 5 V Spannungsteiler 1k/2k !
+#     RX  <- GPIO17 (TX)
+#     GND -- GND
+#     5V     nicht verwenden (Display bekommt eigenen 5-V-Wandler)
+#  Register laut xy-modbus regs.rs / Handbuch-Uebersetzung tinkering4fun
+# =====================================================================
+substitutions:
+  fw_version: "2026.11.14"
+
+esphome:
+  name: labornetzteil
+  friendly_name: "Labornetzteil"
+  on_boot:
+    priority: -100
+    then:
+      # Touch alle 10 ms abfragen (wie beim Heizungs-Display), kurze Tipper gehen sonst verloren
+      - lambda: |-
+          for (lv_indev_t *i = lv_indev_get_next(nullptr); i != nullptr; i = lv_indev_get_next(i)) {
+            lv_timer_t *t = lv_indev_get_read_timer(i);
+            if (t != nullptr) lv_timer_set_period(t, 10);
+          }
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  cpu_frequency: 240MHz
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  level: WARN
+
+api:
+  encryption:
+    key: !secret labornetzteil_encryption_key
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Labornetzteil-Fallback"
+    password: !secret labornetzteil_ap_password
+
+captive_portal:
+
+# ---------------------------------------------------------------------
+#  Display / Touch (identisch zum Heizungs-Display)
+# ---------------------------------------------------------------------
+i2c:
+  - id: i2c_bus
+    sda: GPIO8
+    scl: GPIO7
+    frequency: 400kHz
+
+pca9554:
+  - id: p_c_a
+    address: 0x20
+    i2c_id: i2c_bus
+
+output:
+  - platform: ledc
+    pin: GPIO6
+    id: backlight_pwm
+    frequency: 2000 Hz
+
+light:
+  - platform: monochromatic
+    name: "Display Beleuchtung"
+    id: display_backlight
+    output: backlight_pwm
+    restore_mode: ALWAYS_ON
+    gamma_correct: 1.0
+
+spi:
+  id: display_spi
+  clk_pin: GPIO5
+  mosi_pin: GPIO1
+  miso_pin: GPIO2
+
+display:
+  - platform: mipi_spi
+    id: my_display
+    model: st7796
+    spi_id: display_spi
+    cs_pin:
+      pca9554: p_c_a
+      number: 2
+    dc_pin: GPIO3
+    reset_pin:
+      pca9554: p_c_a
+      number: 1
+    spi_mode: 1
+    data_rate: 40MHz
+    color_order: bgr
+    invert_colors: true
+    pixel_mode: 16bit
+    auto_clear_enabled: false
+    update_interval: never
+
+touchscreen:
+  - platform: ft63x6
+    id: my_touch
+    update_interval: 20ms
+    i2c_id: i2c_bus
+    on_touch:
+      # gedimmt -> sofort wieder volle Helligkeit
+      - if:
+          condition:
+            lambda: 'return id(display_backlight).current_values.get_brightness() < 0.99f;'
+          then:
+            - light.turn_on:
+                id: display_backlight
+                brightness: 100%
+
+# ---------------------------------------------------------------------
+#  Modbus zum XY6020L
+# ---------------------------------------------------------------------
+uart:
+  - id: uart_xy
+    tx_pin: GPIO17   # Leisten-Pin 16
+    rx_pin: GPIO18   # Leisten-Pin 18
+    baud_rate: 115200
+    data_bits: 8
+    parity: NONE
+    stop_bits: 1
+
+modbus:
+  - id: mb
+    uart_id: uart_xy
+    send_wait_time: 150ms   # XY6020L antwortet in bis zu ~100 ms
+
+modbus_controller:
+  - id: xy
+    modbus_id: mb
+    address: 0x01
+    update_interval: 500ms
+    max_cmd_retries: 2
+    offline_skip_updates: 4
+    on_online:
+      then:
+        - lambda: 'id(g_online) = true;'
+        - script.execute: kopf_zeigen
+    on_offline:
+      then:
+        - lambda: 'id(g_online) = false;'
+        - script.execute: kopf_zeigen
+
+globals:
+  - id: g_online
+    type: bool
+    initial_value: "false"
+  - id: g_modus          # 0 = Spannung einstellen, 1 = Strom einstellen
+    type: int
+    initial_value: "0"
+  - id: g_wert           # Wert auf der Einstellseite (noch nicht gesendet)
+    type: float
+    initial_value: "0"
+  - id: g_schritt
+    type: float
+    initial_value: "0.1"
+  - id: g_ovp
+    type: float
+    initial_value: "0"
+  - id: g_ocp
+    type: float
+    initial_value: "0"
+  - id: g_opp
+    type: float
+    initial_value: "0"
+  - id: g_lvp
+    type: float
+    initial_value: "0"
+
+# --- Sollwerte und Schutzgrenzen (lesen + schreiben, auch in HA) ---
+number:
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: n_vset
+    name: "Spannung Soll"
+    address: 0x0000
+    value_type: U_WORD
+    multiply: 100
+    min_value: 0
+    max_value: 60
+    step: 0.01
+    unit_of_measurement: V
+    mode: box
+    on_value:
+      - lvgl.label.update:
+          id: h_vset
+          text:
+            format: "Soll %.2f V"
+            args: [x]
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: n_iset
+    name: "Strom Soll"
+    address: 0x0001
+    value_type: U_WORD
+    multiply: 100
+    min_value: 0
+    max_value: 20
+    step: 0.01
+    unit_of_measurement: A
+    mode: box
+    on_value:
+      - lvgl.label.update:
+          id: h_iset
+          text:
+            format: "Grenze %.2f A"
+            args: [x]
+
+  # Schutzgrenzen der aktiven Gruppe M0 (0x50 + Offset), seltener lesen
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: n_lvp
+    name: "Schutz Unterspannung Eingang"
+    address: 0x0052
+    value_type: U_WORD
+    multiply: 100
+    min_value: 0
+    max_value: 70
+    step: 0.1
+    unit_of_measurement: V
+    mode: box
+    skip_updates: 10
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: n_ovp
+    name: "Schutz Ueberspannung"
+    address: 0x0053
+    value_type: U_WORD
+    multiply: 100
+    min_value: 0
+    max_value: 62
+    step: 0.1
+    unit_of_measurement: V
+    mode: box
+    skip_updates: 10
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: n_ocp
+    name: "Schutz Ueberstrom"
+    address: 0x0054
+    value_type: U_WORD
+    multiply: 100
+    min_value: 0
+    max_value: 21
+    step: 0.1
+    unit_of_measurement: A
+    mode: box
+    skip_updates: 10
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: n_opp
+    name: "Schutz Ueberleistung"
+    address: 0x0055
+    value_type: U_WORD
+    multiply: 10
+    min_value: 0
+    max_value: 1250
+    step: 1
+    unit_of_measurement: W
+    mode: box
+    skip_updates: 10
+
+switch:
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: ausgang
+    name: "Ausgang"
+    register_type: holding
+    address: 0x0012
+    bitmask: 1
+    icon: mdi:power
+    on_turn_on:
+      - script.execute: aus_zeigen
+    on_turn_off:
+      - script.execute: aus_zeigen
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: sperre
+    name: "Tastensperre XY6020L"
+    register_type: holding
+    address: 0x000F
+    bitmask: 1
+    icon: mdi:lock
+    on_turn_on:
+      - lvgl.label.update: {id: s_sperre_t, text: "Tasten am XY: gesperrt"}
+    on_turn_off:
+      - lvgl.label.update: {id: s_sperre_t, text: "Tasten am XY: frei"}
+
+binary_sensor:
+  - platform: template
+    name: "XY6020L verbunden"
+    device_class: connectivity
+    lambda: 'return id(g_online);'
+
+sensor:
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: v_out
+    name: "Spannung"
+    register_type: holding
+    address: 0x0002
+    value_type: U_WORD
+    unit_of_measurement: V
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 2
+    filters: [multiply: 0.01]
+    on_value:
+      - lvgl.label.update:
+          id: h_v
+          text:
+            format: "%5.2f"
+            args: [x]
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: i_out
+    name: "Strom"
+    register_type: holding
+    address: 0x0003
+    value_type: U_WORD
+    unit_of_measurement: A
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 2
+    filters: [multiply: 0.01]
+    on_value:
+      - lvgl.label.update:
+          id: h_i
+          text:
+            format: "%5.2f"
+            args: [x]
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: p_out
+    name: "Leistung"
+    register_type: holding
+    address: 0x0004
+    value_type: U_WORD
+    unit_of_measurement: W
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 1
+    filters: [multiply: 0.1]
+    on_value:
+      - lvgl.label.update:
+          id: h_p
+          text:
+            format: "%.1f W"
+            args: [x]
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: v_in
+    name: "Eingangsspannung"
+    register_type: holding
+    address: 0x0005
+    value_type: U_WORD
+    unit_of_measurement: V
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 1
+    filters: [multiply: 0.01]
+    on_value:
+      - script.execute: kopf_zeigen
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: ah
+    name: "Ladung"
+    register_type: holding
+    address: 0x0006
+    value_type: U_DWORD_R   # Low-Word zuerst
+    unit_of_measurement: Ah
+    accuracy_decimals: 3
+    filters: [multiply: 0.001]
+    on_value:
+      - lvgl.label.update: {id: s_ah, text: {format: "%.3f Ah", args: [x]}}
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: wh
+    name: "Energie"
+    register_type: holding
+    address: 0x0008
+    value_type: U_DWORD_R
+    unit_of_measurement: Wh
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 3
+    filters: [multiply: 0.001]
+    on_value:
+      - lvgl.label.update: {id: s_wh, text: {format: "%.3f Wh", args: [x]}}
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: zeit_h
+    internal: true
+    register_type: holding
+    address: 0x000A
+    value_type: U_WORD
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: zeit_m
+    internal: true
+    register_type: holding
+    address: 0x000B
+    value_type: U_WORD
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: zeit_s
+    internal: true
+    register_type: holding
+    address: 0x000C
+    value_type: U_WORD
+    on_value:
+      - lambda: |-
+          char b[24];
+          snprintf(b, sizeof(b), "%d:%02d:%02d", (int) id(zeit_h).state, (int) id(zeit_m).state, (int) x);
+          lv_label_set_text(s_zeit, b);
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: t_in
+    name: "Temperatur intern"
+    register_type: holding
+    address: 0x000D
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    filters: [multiply: 0.1]
+    on_value:
+      - script.execute: kopf_zeigen
+      - lvgl.label.update: {id: s_tin, text: {format: "%.1f °C", args: [x]}}
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: t_ex
+    name: "Temperatur extern"
+    register_type: holding
+    address: 0x000E
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    filters: [multiply: 0.1]
+    on_value:
+      - lvgl.label.update: {id: s_tex, text: {format: "%.1f °C", args: [x]}}
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: schutz
+    name: "Schutz ausgeloest"
+    register_type: holding
+    address: 0x0010
+    value_type: U_WORD
+    on_value:
+      - script.execute: schutz_banner
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: cvcc
+    name: "Regelmodus (0 CV, 1 CC)"
+    register_type: holding
+    address: 0x0011
+    value_type: U_WORD
+    on_value:
+      - script.execute: aus_zeigen
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: modell
+    internal: true
+    register_type: holding
+    address: 0x0016
+    value_type: U_WORD
+    skip_updates: 20
+  - platform: modbus_controller
+    modbus_controller_id: xy
+    id: version
+    internal: true
+    register_type: holding
+    address: 0x0017
+    value_type: U_WORD
+    skip_updates: 20
+    on_value:
+      - lambda: |-
+          char b[32];
+          snprintf(b, sizeof(b), "Modell %04X  FW %04X", (int) id(modell).state, (int) x);
+          lv_label_set_text(s_modell, b);
+  - platform: wifi_signal
+    name: "WLAN Signal"
+    update_interval: 60s
+
+text_sensor:
+  - platform: template
+    name: "Firmware Display"
+    lambda: 'return {"${fw_version}"};'
+    update_interval: never
+
+# ---------------------------------------------------------------------
+#  Skripte fuer die Anzeige
+# ---------------------------------------------------------------------
+script:
+  # Kopfzeile: Eingangsspannung, Temperatur, Verbindung
+  - id: kopf_zeigen
+    then:
+      - lambda: |-
+          char b[40];
+          if (!id(g_online)) {
+            lv_label_set_text(h_kopf, "XY6020L: keine Verbindung");
+            lv_obj_set_style_text_color(h_kopf, lv_color_hex(0xF44336), 0);
+            return;
+          }
+          snprintf(b, sizeof(b), "Eingang %.1f V   %.0f °C", id(v_in).state, id(t_in).state);
+          lv_label_set_text(h_kopf, b);
+          lv_obj_set_style_text_color(h_kopf, lv_color_hex(0x8C8C8C), 0);
+
+  # Ausgangs-Knopf und CV/CC-Anzeige
+  - id: aus_zeigen
+    then:
+      - lambda: |-
+          bool an = id(ausgang).state;
+          bool cc = id(cvcc).state > 0.5f;
+          lv_obj_set_style_bg_color(h_aus, lv_color_hex(an ? 0x2E7D32 : 0x1F1F1F), 0);
+          lv_obj_set_style_border_color(h_aus, lv_color_hex(an ? 0x4CAF50 : 0x8C8C8C), 0);
+          lv_label_set_text(h_aus_t, an ? "AUSGANG EIN   (tippen = aus)" : "AUSGANG AUS   (lang drücken = ein)");
+          if (!an) {
+            lv_label_set_text(h_mode, "AUS");
+            lv_obj_set_style_text_color(h_mode, lv_color_hex(0x8C8C8C), 0);
+          } else {
+            lv_label_set_text(h_mode, cc ? "CC" : "CV");
+            lv_obj_set_style_text_color(h_mode, lv_color_hex(cc ? 0xFF9800 : 0x4CAF50), 0);
+          }
+          // Wert, der gerade begrenzt, orange hervorheben
+          lv_obj_set_style_text_color(h_i, lv_color_hex(an && cc ? 0xFF9800 : 0xFFFFFF), 0);
+          lv_obj_set_style_text_color(h_v, lv_color_hex(an && !cc ? 0x4CAF50 : 0xFFFFFF), 0);
+
+  # rotes Band, wenn der XY6020L eine Schutzabschaltung meldet
+  - id: schutz_banner
+    then:
+      - lambda: |-
+          int c = (int) id(schutz).state;
+          if (c <= 0) { lv_obj_add_flag(h_ban, LV_OBJ_FLAG_HIDDEN); return; }
+          // Codes laut Handbuch-Uebersetzung (am Geraet pruefen)
+          static const char *n[] = {"", "Überspannung (OVP)", "Überstrom (OCP)", "Überleistung (OPP)",
+                                    "Eingang zu niedrig (LVP)", "Ah-Grenze (OAH)", "Zeitgrenze (OHP)",
+                                    "Übertemperatur (OTP)", "OEP", "Wh-Grenze (OWH)", "Eingangsstrom (ICP)"};
+          char b[48];
+          if (c <= 10) snprintf(b, sizeof(b), "Schutz: %s", n[c]);
+          else snprintf(b, sizeof(b), "Schutz: Code %d", c);
+          lv_label_set_text(h_ban_t, b);
+          lv_obj_clear_flag(h_ban, LV_OBJ_FLAG_HIDDEN);
+
+  # Einstellseite neu zeichnen
+  - id: edit_zeigen
+    then:
+      - lambda: |-
+          char b[32];
+          bool v = id(g_modus) == 0;
+          float ist = v ? id(n_vset).state : id(n_iset).state;
+          snprintf(b, sizeof(b), "%.2f %s", id(g_wert), v ? "V" : "A");
+          lv_label_set_text(e_wert, b);
+          bool neu = std::isnan(ist) || fabsf(ist - id(g_wert)) > 0.004f;
+          lv_obj_set_style_text_color(e_wert, lv_color_hex(neu ? 0xFF9800 : 0xFFFFFF), 0);
+          lv_label_set_text(e_titel, v ? "Spannung einstellen" : "Strombegrenzung einstellen");
+          snprintf(b, sizeof(b), "aktiv: %.2f %s", ist, v ? "V" : "A");
+          lv_label_set_text(e_ist, b);
+          lv_obj_t *st[4] = {e_s0, e_s1, e_s2, e_s3};
+          const float sw[4] = {10.0f, 1.0f, 0.1f, 0.01f};
+          for (int k = 0; k < 4; k++) {
+            bool a = fabsf(id(g_schritt) - sw[k]) < 0.001f;
+            lv_obj_set_style_bg_color(st[k], lv_color_hex(a ? 0x00EDED : 0x1F1F1F), 0);
+            lv_obj_set_style_text_color(st[k], lv_color_hex(a ? 0x000000 : 0xFFFFFF), 0);
+          }
+          static const char *pv[6] = {"3.3 V", "5 V", "12 V", "24 V", "48 V", "55 V"};
+          static const char *pa[6] = {"0.5 A", "1 A", "2 A", "5 A", "10 A", "20 A"};
+          lv_obj_t *pl[6] = {e_p0t, e_p1t, e_p2t, e_p3t, e_p4t, e_p5t};
+          for (int k = 0; k < 6; k++) lv_label_set_text(pl[k], v ? pv[k] : pa[k]);
+
+  # Wert auf der Einstellseite aendern (+/-/Preset), begrenzt und auf 0,01 gerundet
+  - id: edit_setzen
+    parameters:
+      neu: float
+    then:
+      - lambda: |-
+          float mx = id(g_modus) == 0 ? 60.0f : 20.0f;
+          float w = neu < 0 ? 0 : (neu > mx ? mx : neu);
+          id(g_wert) = roundf(w * 100.0f) / 100.0f;
+      - script.execute: edit_zeigen
+
+  # Schutzseite neu zeichnen (orange = noch nicht gespeichert)
+  - id: schutz_zeigen
+    then:
+      - lambda: |-
+          char b[20];
+          struct R { lv_obj_t *l; float w; float ist; const char *f; };
+          R r[4] = {{s_ovp, id(g_ovp), id(n_ovp).state, "%.1f V"},
+                    {s_ocp, id(g_ocp), id(n_ocp).state, "%.1f A"},
+                    {s_opp, id(g_opp), id(n_opp).state, "%.0f W"},
+                    {s_lvp, id(g_lvp), id(n_lvp).state, "%.1f V"}};
+          for (auto &e : r) {
+            snprintf(b, sizeof(b), e.f, e.w);
+            lv_label_set_text(e.l, b);
+            bool neu = std::isnan(e.ist) || fabsf(e.ist - e.w) > 0.04f;
+            lv_obj_set_style_text_color(e.l, lv_color_hex(neu ? 0xFF9800 : 0xFFFFFF), 0);
+          }
+
+# ---------------------------------------------------------------------
+#  Schriften
+# ---------------------------------------------------------------------
+font:
+  - file: "gfonts://Roboto"
+    id: f16
+    size: 16
+    glyphsets: [GF_Latin_Kernel]
+    glyphs: ["°", "Ä", "Ö", "Ü", "ä", "ö", "ü", "ß"]
+  - file: "gfonts://Roboto"
+    id: f20
+    size: 20
+    glyphsets: [GF_Latin_Kernel]
+    glyphs: ["°", "±", "Ä", "Ö", "Ü", "ä", "ö", "ü", "ß"]
+  - file: "gfonts://Roboto"
+    id: f28
+    size: 28
+    glyphsets: [GF_Latin_Kernel]
+    glyphs: ["°", "Ä", "Ö", "Ü", "ä", "ö", "ü", "ß"]
+  # Messwerte: Ziffern mit fester Breite, damit nichts springt
+  - file:
+      type: gfonts
+      family: Roboto Mono
+      weight: 500
+    id: d56
+    size: 56
+    glyphs: "0123456789. -VA"
+  - file:
+      type: gfonts
+      family: Roboto Mono
+      weight: 500
+    id: d32
+    size: 32
+    glyphs: "0123456789. -WVACUS"
+
+# ---------------------------------------------------------------------
+#  Oberflaeche 480 x 320 (quer)
+# ---------------------------------------------------------------------
+lvgl:
+  displays:
+    - my_display
+  touchscreens:
+    - touchscreen_id: my_touch
+  rotation: 90
+  buffer_size: 25%
+  long_press_time: 800ms   # Ausgang EIN nur mit langem Druck
+  default_font: f20
+
+  # 2 min nichts beruehrt: auf 25 % dimmen (Anzeige bleibt lesbar)
+  on_idle:
+    timeout: 120s
+    then:
+      - light.turn_on:
+          id: display_backlight
+          brightness: 25%
+
+  style_definitions:
+    - id: st_kachel
+      bg_color: 0x1F1F1F
+      bg_opa: COVER
+      radius: 10
+      border_width: 0
+      pad_all: 0
+      shadow_width: 0
+    - id: st_klein
+      text_font: f16
+      text_color: 0x8C8C8C
+    - id: st_knopf
+      bg_color: 0x1F1F1F
+      bg_opa: COVER
+      radius: 10
+      border_width: 2
+      border_color: 0x8C8C8C
+      shadow_width: 0
+      pad_all: 0
+      text_color: 0xFFFFFF
+
+  pages:
+    # =================== Hauptseite ===================
+    - id: seite_haupt
+      scrollable: false
+      bg_color: 0x000000
+      bg_opa: COVER
+      widgets:
+        - label: {x: 10, y: 6, text: "Labornetzteil 60 V / 20 A", styles: st_klein, text_color: 0x00EDED}
+        - label: {id: h_kopf, align: TOP_RIGHT, x: -10, y: 6, text: "verbinde ...", styles: st_klein}
+
+        # --- Spannung (antippen = einstellen) ---
+        - button:
+            x: 8
+            y: 32
+            width: 228
+            height: 156
+            styles: st_kachel
+            on_click:
+              - lambda: |-
+                  id(g_modus) = 0;
+                  id(g_wert) = std::isnan(id(n_vset).state) ? 0 : id(n_vset).state;
+              - lvgl.page.show: {id: seite_set, animation: NONE}
+            widgets:
+              - label: {x: 12, y: 8, text: "SPANNUNG", styles: st_klein}
+              - label: {id: h_v, x: 8, y: 44, text: "--.--", text_font: d56}
+              - label: {x: 192, y: 66, text: "V", text_font: f28, text_color: 0x8C8C8C}
+              - label: {id: h_vset, x: 12, y: 122, text: "Soll --", text_font: f20, text_color: 0x00EDED}
+
+        # --- Strom ---
+        - button:
+            x: 244
+            y: 32
+            width: 228
+            height: 156
+            styles: st_kachel
+            on_click:
+              - lambda: |-
+                  id(g_modus) = 1;
+                  id(g_wert) = std::isnan(id(n_iset).state) ? 0 : id(n_iset).state;
+              - lvgl.page.show: {id: seite_set, animation: NONE}
+            widgets:
+              - label: {x: 12, y: 8, text: "STROM", styles: st_klein}
+              - label: {id: h_i, x: 8, y: 44, text: "--.--", text_font: d56}
+              - label: {x: 192, y: 66, text: "A", text_font: f28, text_color: 0x8C8C8C}
+              - label: {id: h_iset, x: 12, y: 122, text: "Grenze --", text_font: f20, text_color: 0x00EDED}
+
+        # --- Leistung / Modus / Schutz-Knopf ---
+        - obj:
+            x: 8
+            y: 196
+            width: 228
+            height: 52
+            styles: st_kachel
+            scrollable: false
+            clickable: false
+            widgets:
+              - label: {x: 12, y: 16, text: "P", styles: st_klein}
+              - label: {id: h_p, align: RIGHT_MID, x: -12, text: "-- W", text_font: d32}
+        - obj:
+            x: 244
+            y: 196
+            width: 110
+            height: 52
+            styles: st_kachel
+            scrollable: false
+            clickable: false
+            widgets:
+              - label: {id: h_mode, align: CENTER, text: "--", text_font: d32, text_color: 0x8C8C8C}
+        - button:
+            x: 362
+            y: 196
+            width: 110
+            height: 52
+            styles: st_knopf
+            on_click:
+              - lambda: |-
+                  id(g_ovp) = std::isnan(id(n_ovp).state) ? 0 : id(n_ovp).state;
+                  id(g_ocp) = std::isnan(id(n_ocp).state) ? 0 : id(n_ocp).state;
+                  id(g_opp) = std::isnan(id(n_opp).state) ? 0 : id(n_opp).state;
+                  id(g_lvp) = std::isnan(id(n_lvp).state) ? 0 : id(n_lvp).state;
+              - lvgl.page.show: {id: seite_schutz, animation: NONE}
+            widgets:
+              - label: {align: CENTER, text: "Schutz", text_font: f20}
+
+        # --- Schutz ausgeloest (liegt ueber der Leistungszeile) ---
+        - obj:
+            id: h_ban
+            x: 8
+            y: 196
+            width: 464
+            height: 52
+            hidden: true
+            bg_color: 0xB71C1C
+            bg_opa: COVER
+            radius: 10
+            border_width: 0
+            pad_all: 0
+            scrollable: false
+            widgets:
+              - label: {id: h_ban_t, x: 12, align: LEFT_MID, text: "Schutz", text_font: f20, text_color: 0xFFFFFF}
+              - button:
+                  align: RIGHT_MID
+                  x: -6
+                  width: 130
+                  height: 40
+                  styles: st_knopf
+                  on_click:
+                    - lambda: |-
+                        auto cmd = modbus_controller::ModbusCommandItem::create_write_single_command(id(xy), 0x0010, 0);
+                        id(xy)->queue_command(cmd);
+                  widgets:
+                    - label: {align: CENTER, text: "Quittieren", text_font: f20}
+
+        # --- Ausgang: aus = tippen, ein = lang druecken ---
+        - button:
+            id: h_aus
+            x: 8
+            y: 256
+            width: 464
+            height: 58
+            styles: st_knopf
+            # on_short_click: nach einem langen Druck kommt kein Klick hinterher (sonst gleich wieder aus)
+            on_short_click:
+              - if:
+                  condition:
+                    switch.is_on: ausgang
+                  then:
+                    - switch.turn_off: ausgang
+            on_long_press:
+              - if:
+                  condition:
+                    switch.is_off: ausgang
+                  then:
+                    - switch.turn_on: ausgang
+            widgets:
+              - label: {id: h_aus_t, align: CENTER, text: "AUSGANG --", text_font: f20}
+
+    # =================== Spannung / Strom einstellen ===================
+    - id: seite_set
+      skip: true
+      scrollable: false
+      bg_color: 0x000000
+      bg_opa: COVER
+      on_load:
+        - script.execute: edit_zeigen
+      widgets:
+        - label: {id: e_titel, x: 10, y: 6, text: "einstellen", text_font: f20, text_color: 0x00EDED}
+        - label: {id: e_ist, align: TOP_RIGHT, x: -10, y: 8, text: "", styles: st_klein}
+        - label: {id: e_wert, align: TOP_MID, y: 36, text: "--", text_font: d56}
+
+        # Schrittweite
+        - button: {id: e_s0, x: 8, y: 106, width: 110, height: 42, styles: st_knopf, on_click: [lambda: 'id(g_schritt) = 10.0f;', script.execute: edit_zeigen], widgets: [label: {align: CENTER, text: "± 10"}]}
+        - button: {id: e_s1, x: 126, y: 106, width: 110, height: 42, styles: st_knopf, on_click: [lambda: 'id(g_schritt) = 1.0f;', script.execute: edit_zeigen], widgets: [label: {align: CENTER, text: "± 1"}]}
+        - button: {id: e_s2, x: 244, y: 106, width: 110, height: 42, styles: st_knopf, on_click: [lambda: 'id(g_schritt) = 0.1f;', script.execute: edit_zeigen], widgets: [label: {align: CENTER, text: "± 0.1"}]}
+        - button: {id: e_s3, x: 362, y: 106, width: 110, height: 42, styles: st_knopf, on_click: [lambda: 'id(g_schritt) = 0.01f;', script.execute: edit_zeigen], widgets: [label: {align: CENTER, text: "± 0.01"}]}
+
+        # - / +  (gedrueckt halten = wiederholen)
+        - button:
+            x: 8
+            y: 154
+            width: 228
+            height: 52
+            styles: st_knopf
+            on_short_click:
+              - script.execute: {id: edit_setzen, neu: !lambda 'return id(g_wert) - id(g_schritt);'}
+            on_long_press_repeat:
+              - script.execute: {id: edit_setzen, neu: !lambda 'return id(g_wert) - id(g_schritt);'}
+            widgets:
+              - label: {align: CENTER, text: "-", text_font: d32}
+        - button:
+            x: 244
+            y: 154
+            width: 228
+            height: 52
+            styles: st_knopf
+            on_short_click:
+              - script.execute: {id: edit_setzen, neu: !lambda 'return id(g_wert) + id(g_schritt);'}
+            on_long_press_repeat:
+              - script.execute: {id: edit_setzen, neu: !lambda 'return id(g_wert) + id(g_schritt);'}
+            widgets:
+              - label: {align: CENTER, text: "+", text_font: d32}
+
+        # Schnellwahl (Beschriftung je nach Modus)
+        - button: {x: 8,   y: 212, width: 72, height: 40, styles: st_knopf, on_click: [script.execute: {id: edit_setzen, neu: !lambda 'return id(g_modus) == 0 ? 3.3f : 0.5f;'}], widgets: [label: {id: e_p0t, align: CENTER, text: "", text_font: f16}]}
+        - button: {x: 86,  y: 212, width: 72, height: 40, styles: st_knopf, on_click: [script.execute: {id: edit_setzen, neu: !lambda 'return id(g_modus) == 0 ? 5.0f : 1.0f;'}], widgets: [label: {id: e_p1t, align: CENTER, text: "", text_font: f16}]}
+        - button: {x: 164, y: 212, width: 72, height: 40, styles: st_knopf, on_click: [script.execute: {id: edit_setzen, neu: !lambda 'return id(g_modus) == 0 ? 12.0f : 2.0f;'}], widgets: [label: {id: e_p2t, align: CENTER, text: "", text_font: f16}]}
+        - button: {x: 244, y: 212, width: 72, height: 40, styles: st_knopf, on_click: [script.execute: {id: edit_setzen, neu: !lambda 'return id(g_modus) == 0 ? 24.0f : 5.0f;'}], widgets: [label: {id: e_p3t, align: CENTER, text: "", text_font: f16}]}
+        - button: {x: 322, y: 212, width: 72, height: 40, styles: st_knopf, on_click: [script.execute: {id: edit_setzen, neu: !lambda 'return id(g_modus) == 0 ? 48.0f : 10.0f;'}], widgets: [label: {id: e_p4t, align: CENTER, text: "", text_font: f16}]}
+        - button: {x: 400, y: 212, width: 72, height: 40, styles: st_knopf, on_click: [script.execute: {id: edit_setzen, neu: !lambda 'return id(g_modus) == 0 ? 55.0f : 20.0f;'}], widgets: [label: {id: e_p5t, align: CENTER, text: "", text_font: f16}]}
+
+        # Abbrechen / Uebernehmen
+        - button:
+            x: 8
+            y: 260
+            width: 228
+            height: 54
+            styles: st_knopf
+            on_click:
+              - lvgl.page.show: {id: seite_haupt, animation: NONE}
+            widgets:
+              - label: {align: CENTER, text: "Abbrechen"}
+        - button:
+            x: 244
+            y: 260
+            width: 228
+            height: 54
+            styles: st_knopf
+            border_color: 0x4CAF50
+            on_click:
+              - if:
+                  condition:
+                    lambda: 'return id(g_modus) == 0;'
+                  then:
+                    - number.set: {id: n_vset, value: !lambda 'return id(g_wert);'}
+                  else:
+                    - number.set: {id: n_iset, value: !lambda 'return id(g_wert);'}
+              - lvgl.page.show: {id: seite_haupt, animation: NONE}
+            widgets:
+              - label: {align: CENTER, text: "Übernehmen", text_color: 0x4CAF50}
+
+    # =================== Schutz & Info ===================
+    - id: seite_schutz
+      skip: true
+      scrollable: false
+      bg_color: 0x000000
+      bg_opa: COVER
+      on_load:
+        - script.execute: schutz_zeigen
+      widgets:
+        - label: {x: 10, y: 6, text: "Schutzgrenzen & Info", text_font: f20, text_color: 0x00EDED}
+
+        # 4 Zeilen: Name | - | Wert | +
+        - obj:
+            x: 8
+            y: 34
+            width: 300
+            height: 218
+            styles: st_kachel
+            scrollable: false
+            clickable: false
+            widgets:
+              - label: {x: 10, y: 16, text: "Überspannung", styles: st_klein}
+              - button: {x: 120, y: 6, width: 44, height: 40, styles: st_knopf, on_short_click: [lambda: 'id(g_ovp) = fmaxf(0, id(g_ovp) - 0.5f);', script.execute: schutz_zeigen], on_long_press_repeat: [lambda: 'id(g_ovp) = fmaxf(0, id(g_ovp) - 0.5f);', script.execute: schutz_zeigen], widgets: [label: {align: CENTER, text: "-"}]}
+              - label: {id: s_ovp, x: 168, y: 14, width: 80, text: "--", text_align: CENTER}
+              - button: {x: 250, y: 6, width: 44, height: 40, styles: st_knopf, on_short_click: [lambda: 'id(g_ovp) = fminf(62, id(g_ovp) + 0.5f);', script.execute: schutz_zeigen], on_long_press_repeat: [lambda: 'id(g_ovp) = fminf(62, id(g_ovp) + 0.5f);', script.execute: schutz_zeigen], widgets: [label: {align: CENTER, text: "+"}]}
+
+              - label: {x: 10, y: 70, text: "Überstrom", styles: st_klein}
+              - button: {x: 120, y: 60, width: 44, height: 40, styles: st_knopf, on_short_click: [lambda: 'id(g_ocp) = fmaxf(0, id(g_ocp) - 0.5f);', script.execute: schutz_zeigen], on_long_press_repeat: [lambda: 'id(g_ocp) = fmaxf(0, id(g_ocp) - 0.5f);', script.execute: schutz_zeigen], widgets: [label: {align: CENTER, text: "-"}]}
+              - label: {id: s_ocp, x: 168, y: 68, width: 80, text: "--", text_align: CENTER}
+              - button: {x: 250, y: 60, width: 44, height: 40, styles: st_knopf, on_short_click: [lambda: 'id(g_ocp) = fminf(21, id(g_ocp) + 0.5f);', script.execute: schutz_zeigen], on_long_press_repeat: [lambda: 'id(g_ocp) = fminf(21, id(g_ocp) + 0.5f);', script.execute: schutz_zeigen], widgets: [label: {align: CENTER, text: "+"}]}
+
+              - label: {x: 10, y: 124, text: "Überleistung", styles: st_klein}
+              - button: {x: 120, y: 114, width: 44, height: 40, styles: st_knopf, on_short_click: [lambda: 'id(g_opp) = fmaxf(0, id(g_opp) - 10.0f);', script.execute: schutz_zeigen], on_long_press_repeat: [lambda: 'id(g_opp) = fmaxf(0, id(g_opp) - 10.0f);', script.execute: schutz_zeigen], widgets: [label: {align: CENTER, text: "-"}]}
+              - label: {id: s_opp, x: 168, y: 122, width: 80, text: "--", text_align: CENTER}
+              - button: {x: 250, y: 114, width: 44, height: 40, styles: st_knopf, on_short_click: [lambda: 'id(g_opp) = fminf(1250, id(g_opp) + 10.0f);', script.execute: schutz_zeigen], on_long_press_repeat: [lambda: 'id(g_opp) = fminf(1250, id(g_opp) + 10.0f);', script.execute: schutz_zeigen], widgets: [label: {align: CENTER, text: "+"}]}
+
+              - label: {x: 10, y: 178, text: "Eingang min.", styles: st_klein}
+              - button: {x: 120, y: 168, width: 44, height: 40, styles: st_knopf, on_short_click: [lambda: 'id(g_lvp) = fmaxf(0, id(g_lvp) - 0.5f);', script.execute: schutz_zeigen], on_long_press_repeat: [lambda: 'id(g_lvp) = fmaxf(0, id(g_lvp) - 0.5f);', script.execute: schutz_zeigen], widgets: [label: {align: CENTER, text: "-"}]}
+              - label: {id: s_lvp, x: 168, y: 176, width: 80, text: "--", text_align: CENTER}
+              - button: {x: 250, y: 168, width: 44, height: 40, styles: st_knopf, on_short_click: [lambda: 'id(g_lvp) = fminf(70, id(g_lvp) + 0.5f);', script.execute: schutz_zeigen], on_long_press_repeat: [lambda: 'id(g_lvp) = fminf(70, id(g_lvp) + 0.5f);', script.execute: schutz_zeigen], widgets: [label: {align: CENTER, text: "+"}]}
+
+        # Info rechts
+        - obj:
+            x: 316
+            y: 34
+            width: 156
+            height: 218
+            styles: st_kachel
+            scrollable: false
+            clickable: false
+            widgets:
+              - label: {x: 10, y: 8, text: "Ladung", styles: st_klein}
+              - label: {id: s_ah, align: TOP_RIGHT, x: -10, y: 8, text: "--", text_font: f16}
+              - label: {x: 10, y: 32, text: "Energie", styles: st_klein}
+              - label: {id: s_wh, align: TOP_RIGHT, x: -10, y: 32, text: "--", text_font: f16}
+              - label: {x: 10, y: 56, text: "Laufzeit", styles: st_klein}
+              - label: {id: s_zeit, align: TOP_RIGHT, x: -10, y: 56, text: "--", text_font: f16}
+              - label: {x: 10, y: 80, text: "T intern", styles: st_klein}
+              - label: {id: s_tin, align: TOP_RIGHT, x: -10, y: 80, text: "--", text_font: f16}
+              - label: {x: 10, y: 104, text: "T extern", styles: st_klein}
+              - label: {id: s_tex, align: TOP_RIGHT, x: -10, y: 104, text: "--", text_font: f16}
+              - label: {id: s_modell, x: 10, y: 130, text: "Modell --", styles: st_klein}
+              - button:
+                  x: 6
+                  y: 160
+                  width: 144
+                  height: 50
+                  styles: st_knopf
+                  on_click:
+                    - switch.toggle: sperre
+                  widgets:
+                    - label: {id: s_sperre_t, align: CENTER, width: 136, text: "Tasten am XY", text_font: f16, long_mode: WRAP, text_align: CENTER}
+
+        - button:
+            x: 8
+            y: 260
+            width: 228
+            height: 54
+            styles: st_knopf
+            on_click:
+              - lvgl.page.show: {id: seite_haupt, animation: NONE}
+            widgets:
+              - label: {align: CENTER, text: "Zurück"}
+        - button:
+            x: 244
+            y: 260
+            width: 228
+            height: 54
+            styles: st_knopf
+            border_color: 0x4CAF50
+            on_click:
+              - number.set: {id: n_ovp, value: !lambda 'return id(g_ovp);'}
+              - number.set: {id: n_ocp, value: !lambda 'return id(g_ocp);'}
+              - number.set: {id: n_opp, value: !lambda 'return id(g_opp);'}
+              - number.set: {id: n_lvp, value: !lambda 'return id(g_lvp);'}
+              - delay: 1500ms
+              - script.execute: schutz_zeigen
+            widgets:
+              - label: {align: CENTER, text: "Speichern", text_color: 0x4CAF50}

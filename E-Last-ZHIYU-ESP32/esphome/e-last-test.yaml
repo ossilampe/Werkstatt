@@ -1,0 +1,709 @@
+# ===================================================================
+#  E-Last Test: Waveshare ESP32-S3-Touch-LCD-3.5 + ZHIYU ZPB30A1 (FW herm)
+#  Eigenes Testgeraet (NICHT labornetzteil.yaml). Display/Touch wie test-heizung.yaml.
+#  Last-UART: GPIO17 (Leisten-Pin 16) = ESP-TX -> R der Last
+#             GPIO18 (Leisten-Pin 18) = ESP-RX <- T der Last (Spannungsteiler 1k/2k!)
+#  Protokoll-Hilfen in e-last-test/el.h
+# ===================================================================
+substitutions:
+  fw_version: "2026.11.19"
+
+esphome:
+  name: e-last-test
+  friendly_name: "E-Last Test"
+  includes:
+    - e-last-test/el.h
+  on_boot:
+    priority: -100
+    then:
+      # Touch schneller abfragen (wie Heizungs-Display)
+      - lambda: |-
+          for (lv_indev_t *i = lv_indev_get_next(nullptr); i != nullptr; i = lv_indev_get_next(i)) {
+            lv_timer_t *t = lv_indev_get_read_timer(i);
+            if (t != nullptr) lv_timer_set_period(t, 10);
+          }
+          el::push("");   // nur '!' -> Parser der Last initialisieren
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  cpu_frequency: 240MHz
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  level: INFO   # Befehle und alle 5 s eine VAL-Zeile im Log
+
+api:
+  encryption:
+    key: !secret e_last_test_encryption_key
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "E-Last-Test-Fallback"
+    password: !secret e_last_test_ap_password
+
+captive_portal:
+
+i2c:
+  - id: i2c_bus
+    sda: GPIO8
+    scl: GPIO7
+    frequency: 400kHz
+    scan: true
+
+pca9554:
+  - id: p_c_a
+    address: 0x20
+    i2c_id: i2c_bus
+
+output:
+  - platform: ledc
+    pin: GPIO6
+    id: backlight_pwm
+    frequency: 2000 Hz
+
+light:
+  - platform: monochromatic
+    name: "Display Hintergrundbeleuchtung"
+    id: display_backlight
+    output: backlight_pwm
+    restore_mode: ALWAYS_ON
+    gamma_correct: 1.0
+
+spi:
+  id: display_spi
+  clk_pin: GPIO5
+  mosi_pin: GPIO1
+  miso_pin: GPIO2
+
+display:
+  - platform: mipi_spi
+    id: my_display
+    model: st7796
+    spi_id: display_spi
+    cs_pin:
+      pca9554: p_c_a
+      number: 2
+    dc_pin: GPIO3
+    reset_pin:
+      pca9554: p_c_a
+      number: 1
+    spi_mode: 1
+    data_rate: 40MHz
+    color_order: bgr
+    invert_colors: true
+    pixel_mode: 16bit
+    auto_clear_enabled: false
+    update_interval: never
+
+touchscreen:
+  - platform: ft63x6
+    id: my_touch
+    update_interval: 20ms
+    i2c_id: i2c_bus
+    transform:
+      swap_xy: false
+      mirror_x: false
+      mirror_y: false
+
+# ---------- Last-UART ----------
+uart:
+  - id: uart_last
+    tx_pin: GPIO17   # Leisten-Pin 16 -> R (RX der Last)
+    rx_pin: GPIO18   # Leisten-Pin 18 <- T (TX der Last) ueber 1k/2k
+    baud_rate: 115200
+    data_bits: 8
+    parity: NONE
+    stop_bits: 1
+    rx_buffer_size: 1024
+
+script:
+  # Sollwert erst 300 ms nach dem letzten Tipper senden
+  - id: soll_senden
+    mode: restart
+    then:
+      - delay: 300ms
+      - lambda: 'el::push(el::soll_befehl(el::z.modus));'
+
+interval:
+  - interval: 20ms
+    then:
+      - lambda: 'el::lies(id(uart_last));'
+  - interval: 100ms
+    then:
+      - lambda: |-
+          bool on = el::online();
+          // Verbindung (wieder) da: Last sicherheitshalber aus, Modus + Sollwert vom Display uebernehmen
+          if (on && !el::z.war_online) {
+            el::push("S");
+            el::setze_modus(el::z.modus);
+          }
+          el::z.war_online = on;
+          el::sende(id(uart_last));
+  # Anzeige
+  - interval: 250ms
+    then:
+      - lambda: |-
+          auto &z = el::z;
+          static int alt_modus = -1, alt_ein = -1, alt_schritt = -1;
+          bool on = el::online();
+          bool ein = el::aktiv();
+          int m = z.modus;
+          auto setz = [](lv_obj_t *o, const std::string &s) {
+            if (strcmp(lv_label_get_text(o), s.c_str()) != 0) lv_label_set_text(o, s.c_str());
+          };
+          // Kopfzeile
+          std::string st;
+          uint32_t farbe;
+          if (!on) { st = "OFFLINE"; farbe = 0xEF4444; }
+          else if (z.err > 0 && z.err < 10) { st = std::string("FEHLER ") + el::FEHLER[z.err]; farbe = 0xEF4444; }
+          else if (z.st == 'A') { st = "AKTIV"; farbe = 0x22C55E; }
+          else if (z.st == 'U') { st = "NICHT GEREGELT"; farbe = 0xF59E0B; }
+          else { st = "AUS"; farbe = 0x8C8C8C; }
+          setz(hdr_status, st);
+          lv_obj_set_style_text_color(hdr_status, lv_color_hex(farbe), 0);
+          setz(hdr_temp, on ? el::fmt(z.temp, 1, "°C") : "-- °C");
+          // Messwerte
+          float u = on ? z.vl / 1000.0f : NAN;
+          float i = on ? z.iset / 1000.0f : NAN;
+          float p = on ? (ein ? u * i : 0.0f) : NAN;
+          setz(u_wert, el::fmt(u, 2, "V"));
+          setz(u_info, on ? ("Sense " + el::fmt(z.vs / 1000.0f, 2, "V") + "  |  12V " + el::fmt(z.vi / 1000.0f, 1, "V")) : "keine Daten von der Last");
+          setz(i_wert, el::fmt(i, 3, "A"));
+          setz(p_wert, el::fmt(p, 1, "W"));
+          setz(z_wert, on ? (el::fmt((z.mas - z.mas0) / 3600000.0f, 3, "Ah") + "  |  " + el::fmt((z.mws - z.mws0) / 3600000.0f, 2, "Wh")) : "-- Ah  |  -- Wh");
+          // Sollwert
+          setz(soll_titel, std::string("Sollwert ") + el::MODUS[m]);
+          setz(soll_wert, el::fmt(z.soll[m], el::NK[m], el::EINHEIT[m]));
+          if (on && z.err > 0 && z.err < 10) setz(antwort, el::FEHLER_TXT[z.err]);
+          else setz(antwort, z.antwort);
+          // Modus-Knoepfe
+          if (m != alt_modus) {
+            lv_obj_t *b[4] = {b_cc, b_cw, b_cr, b_cv};
+            for (int k = 0; k < 4; k++)
+              lv_obj_set_style_bg_color(b[k], lv_color_hex(k == m ? 0x7C3AED : 0x1F1F1F), 0);
+            alt_modus = m;
+            alt_schritt = -1;
+          }
+          if (z.schritt != alt_schritt) {
+            setz(schritt_t, "Schritt\n" + el::fmt(el::SCHRITT[m][z.schritt], el::NK_SCHRITT[m][z.schritt], el::EINHEIT[m]));
+            alt_schritt = z.schritt;
+          }
+          // Ein/Aus
+          int e = !on ? 2 : (ein ? 1 : 0);
+          if (e != alt_ein) {
+            if (e == 1) {
+              setz(e_txt, "AUS");
+              lv_obj_set_style_bg_color(e_btn, lv_color_hex(0xB91C1C), 0);
+              lv_obj_set_style_border_color(e_btn, lv_color_hex(0xEF4444), 0);
+            } else {
+              setz(e_txt, e == 0 ? "EIN" : "offline");
+              lv_obj_set_style_bg_color(e_btn, lv_color_hex(0x1F1F1F), 0);
+              lv_obj_set_style_border_color(e_btn, lv_color_hex(e == 0 ? 0x22C55E : 0x444444), 0);
+            }
+            alt_ein = e;
+          }
+
+# ---------- Werte fuer Home Assistant (alle 2 s) ----------
+sensor:
+  - platform: template
+    name: "Spannung Last"
+    unit_of_measurement: "V"
+    device_class: voltage
+    accuracy_decimals: 3
+    update_interval: 2s
+    lambda: 'return el::online() ? el::z.vl / 1000.0f : NAN;'
+  - platform: template
+    name: "Spannung Sense"
+    unit_of_measurement: "V"
+    device_class: voltage
+    accuracy_decimals: 3
+    update_interval: 2s
+    lambda: 'return el::online() ? el::z.vs / 1000.0f : NAN;'
+  - platform: template
+    name: "Versorgung 12V"
+    unit_of_measurement: "V"
+    device_class: voltage
+    accuracy_decimals: 2
+    update_interval: 10s
+    lambda: 'return el::online() ? el::z.vi / 1000.0f : NAN;'
+  - platform: template
+    name: "Strom Soll"
+    unit_of_measurement: "A"
+    device_class: current
+    accuracy_decimals: 3
+    update_interval: 2s
+    lambda: 'return el::online() ? el::z.iset / 1000.0f : NAN;'
+  - platform: template
+    name: "Leistung"
+    unit_of_measurement: "W"
+    device_class: power
+    accuracy_decimals: 2
+    update_interval: 2s
+    lambda: 'return el::online() ? (el::aktiv() ? el::z.vl * (float) el::z.iset / 1e6f : 0.0f) : NAN;'
+  - platform: template
+    name: "Temperatur"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    accuracy_decimals: 1
+    update_interval: 10s
+    lambda: 'return el::online() ? el::z.temp : NAN;'
+  - platform: template
+    name: "Ladung"
+    unit_of_measurement: "Ah"
+    accuracy_decimals: 4
+    update_interval: 5s
+    lambda: 'return el::online() ? (el::z.mas - el::z.mas0) / 3600000.0f : NAN;'
+  - platform: template
+    name: "Energie"
+    unit_of_measurement: "Wh"
+    accuracy_decimals: 3
+    update_interval: 5s
+    lambda: 'return el::online() ? (el::z.mws - el::z.mws0) / 3600000.0f : NAN;'
+
+text_sensor:
+  - platform: template
+    name: "Status"
+    update_interval: 2s
+    lambda: |-
+      auto &z = el::z;
+      if (!el::online()) return {"offline"};
+      std::string s = z.st == 'A' ? "aktiv" : (z.st == 'U' ? "aktiv, nicht geregelt" : (z.st == 'D' ? "aus" : "?"));
+      if (z.err > 0 && z.err < 10) s += std::string(", Fehler ") + el::FEHLER[z.err];
+      return s;
+  - platform: template
+    name: "Letzte Antwort"
+    update_interval: 2s
+    lambda: 'return el::z.antwort;'
+  - platform: template
+    name: "Letzte VAL-Zeile"
+    update_interval: 5s
+    lambda: 'return el::z.roh;'
+  - platform: template
+    name: "Sonstige Zeile"
+    update_interval: 5s
+    lambda: 'return el::z.fremd;'
+  - platform: template
+    name: "Firmware"
+    entity_category: diagnostic
+    update_interval: never
+    lambda: 'return {"${fw_version}"};'
+
+switch:
+  - platform: template
+    name: "Last"
+    lambda: 'return el::aktiv();'
+    turn_on_action:
+      - lambda: 'el::ein();'
+    turn_off_action:
+      - lambda: 'el::aus();'
+
+select:
+  - platform: template
+    name: "Modus"
+    options: ["CC", "CW", "CR", "CV"]
+    update_interval: 2s
+    lambda: 'return std::string(el::MODUS[el::z.modus]);'
+    set_action:
+      - lambda: |-
+          for (int k = 0; k < 4; k++) if (x == el::MODUS[k]) el::setze_modus(k);
+
+number:
+  - platform: template
+    name: "Sollwert CC"
+    unit_of_measurement: "A"
+    min_value: 0.2
+    max_value: 10
+    step: 0.01
+    mode: box
+    update_interval: 2s
+    lambda: 'return el::z.soll[0];'
+    set_action:
+      - lambda: |-
+          el::z.soll[0] = x;
+          if (el::z.modus == 0) el::push(el::soll_befehl(0));
+
+button:
+  - platform: template
+    name: "Ah/Wh nullen"
+    on_press:
+      - lambda: 'el::z.null_setzen = true;'
+
+# ---------- Schriften ----------
+font:
+  - file: "gfonts://Roboto"
+    id: f14
+    size: 14
+    glyphsets: [GF_Latin_Kernel]
+    glyphs: ["Ω", "Ä", "Ö", "Ü", "ä", "ö", "ü", "ß"]
+  - file: "gfonts://Roboto"
+    id: f18
+    size: 18
+    glyphsets: [GF_Latin_Kernel]
+    glyphs: ["Ω", "Ä", "Ö", "Ü", "ä", "ö", "ü", "ß"]
+  - file: "gfonts://Roboto"
+    id: f20
+    size: 20
+    glyphsets: [GF_Latin_Kernel]
+    glyphs: ["Ω", "Ä", "Ö", "Ü", "ä", "ö", "ü", "ß"]
+  - file: "gfonts://Roboto"
+    id: f26
+    size: 26
+    glyphsets: [GF_Latin_Kernel]
+    glyphs: ["Ω", "Ä", "Ö", "Ü", "ä", "ö", "ü", "ß"]
+  - file: "gfonts://Roboto@500"
+    id: f40
+    size: 40
+    glyphs: " 0123456789,.-+VAWΩ"
+
+# ---------- Oberflaeche (Entwurf E1: dunkel, Violett = E-Last) ----------
+lvgl:
+  displays:
+    - my_display
+  touchscreens:
+    - touchscreen_id: my_touch
+  rotation: 90
+  buffer_size: 25%
+  theme:
+    dark_mode: true
+    label:
+      text_color: 0xFFFFFF
+  bottom_layer:
+    bg_color: 0x000000
+    bg_opa: COVER
+  text_color: 0xFFFFFF
+  text_font: f20
+
+  style_definitions:
+    - id: st_kachel
+      bg_color: 0x1F1F1F
+      bg_opa: COVER
+      radius: 10
+      border_width: 0
+      pad_all: 0
+    - id: st_knopf
+      bg_color: 0x1F1F1F
+      bg_opa: COVER
+      radius: 10
+      border_width: 2
+      border_color: 0x7C3AED
+      shadow_width: 0
+      pad_all: 0
+    - id: st_grau
+      text_font: f18
+      text_color: 0x8C8C8C
+
+  pages:
+    - id: seite
+      bg_color: 0x000000
+      bg_opa: COVER
+      scrollable: false
+      widgets:
+        # ----- Kopfzeile -----
+        - label:
+            x: 8
+            y: 4
+            text: "E-Last Test"
+            text_font: f20
+            text_color: 0xA855F7
+        - label:
+            id: hdr_status
+            x: 140
+            y: 4
+            width: 220
+            text_align: CENTER
+            text: "OFFLINE"
+            text_font: f20
+            text_color: 0xEF4444
+        - label:
+            id: hdr_temp
+            x: 370
+            y: 5
+            width: 102
+            text_align: RIGHT
+            text: "-- °C"
+            text_font: f18
+        - obj:
+            x: 0
+            y: 30
+            width: 480
+            height: 2
+            bg_color: 0xA855F7
+            bg_opa: COVER
+            radius: 0
+            border_width: 0
+            clickable: false
+
+        # ----- linke Spalte: Messwerte -----
+        - obj:
+            x: 8
+            y: 38
+            width: 228
+            height: 100
+            styles: st_kachel
+            scrollable: false
+            clickable: false
+            widgets:
+              - label:
+                  x: 10
+                  y: 6
+                  text: "Spannung"
+                  styles: st_grau
+              - label:
+                  id: u_wert
+                  x: 0
+                  y: 26
+                  width: 216
+                  text_align: RIGHT
+                  text: "--,-- V"
+                  text_font: f40
+                  text_color: 0xA855F7
+              - label:
+                  id: u_info
+                  x: 10
+                  y: 78
+                  width: 210
+                  text: "keine Daten von der Last"
+                  text_font: f14
+                  text_color: 0x8C8C8C
+        - obj:
+            x: 8
+            y: 144
+            width: 228
+            height: 66
+            styles: st_kachel
+            scrollable: false
+            clickable: false
+            widgets:
+              - label:
+                  x: 10
+                  y: 5
+                  text: "Strom (Soll)"
+                  styles: st_grau
+              - label:
+                  id: i_wert
+                  x: 0
+                  y: 30
+                  width: 216
+                  text_align: RIGHT
+                  text: "-- A"
+                  text_font: f26
+        - obj:
+            x: 8
+            y: 216
+            width: 228
+            height: 50
+            styles: st_kachel
+            scrollable: false
+            clickable: false
+            widgets:
+              - label:
+                  x: 10
+                  y: 15
+                  text: "Leistung"
+                  styles: st_grau
+              - label:
+                  id: p_wert
+                  x: 90
+                  y: 10
+                  width: 126
+                  text_align: RIGHT
+                  text: "-- W"
+                  text_font: f26
+        - obj:
+            x: 8
+            y: 272
+            width: 228
+            height: 42
+            styles: st_kachel
+            scrollable: false
+            clickable: false
+            widgets:
+              - label:
+                  id: z_wert
+                  x: 10
+                  y: 13
+                  width: 160
+                  text: "-- Ah  |  -- Wh"
+                  text_font: f14
+        - button:
+            x: 184
+            y: 277
+            width: 46
+            height: 32
+            styles: st_knopf
+            on_click:
+              - lambda: 'el::z.null_setzen = true;'
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "0"
+                  text_font: f18
+
+        # ----- rechte Spalte: Modus, Sollwert, Ein/Aus -----
+        - button:
+            id: b_cc
+            x: 244
+            y: 38
+            width: 54
+            height: 44
+            styles: st_knopf
+            on_click:
+              - lambda: 'el::setze_modus(0);'
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "CC"
+        - button:
+            id: b_cw
+            x: 302
+            y: 38
+            width: 54
+            height: 44
+            styles: st_knopf
+            on_click:
+              - lambda: 'el::setze_modus(1);'
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "CW"
+        - button:
+            id: b_cr
+            x: 360
+            y: 38
+            width: 54
+            height: 44
+            styles: st_knopf
+            on_click:
+              - lambda: 'el::setze_modus(2);'
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "CR"
+        - button:
+            id: b_cv
+            x: 418
+            y: 38
+            width: 54
+            height: 44
+            styles: st_knopf
+            on_click:
+              - lambda: 'el::setze_modus(3);'
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "CV"
+
+        - obj:
+            x: 244
+            y: 88
+            width: 228
+            height: 112
+            styles: st_kachel
+            scrollable: false
+            clickable: false
+            widgets:
+              - label:
+                  id: soll_titel
+                  x: 10
+                  y: 6
+                  text: "Sollwert CC"
+                  styles: st_grau
+              - label:
+                  id: soll_wert
+                  x: 0
+                  y: 28
+                  width: 216
+                  text_align: RIGHT
+                  text: "0,50 A"
+                  text_font: f40
+                  text_color: 0xA855F7
+              - label:
+                  id: antwort
+                  x: 10
+                  y: 86
+                  width: 210
+                  long_mode: DOT
+                  text: "-"
+                  text_font: f14
+                  text_color: 0x8C8C8C
+
+        - button:
+            x: 244
+            y: 206
+            width: 70
+            height: 52
+            styles: st_knopf
+            on_click:
+              - lambda: 'el::aendere_soll(-1);'
+              - script.execute: soll_senden
+            on_long_press_repeat:
+              - lambda: 'el::aendere_soll(-1);'
+              - script.execute: soll_senden
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "-"
+                  text_font: f40
+        - button:
+            x: 318
+            y: 206
+            width: 80
+            height: 52
+            styles: st_knopf
+            on_click:
+              - lambda: 'el::z.schritt = (el::z.schritt + 1) % 3;'
+            widgets:
+              - label:
+                  id: schritt_t
+                  align: CENTER
+                  text_align: CENTER
+                  text: "Schritt\n0,1 A"
+                  text_font: f14
+        - button:
+            x: 402
+            y: 206
+            width: 70
+            height: 52
+            styles: st_knopf
+            on_click:
+              - lambda: 'el::aendere_soll(1);'
+              - script.execute: soll_senden
+            on_long_press_repeat:
+              - lambda: 'el::aendere_soll(1);'
+              - script.execute: soll_senden
+            widgets:
+              - label:
+                  align: CENTER
+                  text: "+"
+                  text_font: f40
+
+        - button:
+            id: e_btn
+            x: 244
+            y: 264
+            width: 228
+            height: 50
+            styles: st_knopf
+            border_width: 3
+            border_color: 0x444444
+            on_click:
+              - lambda: |-
+                  if (el::aktiv()) el::aus(); else el::ein();
+            widgets:
+              - label:
+                  id: e_txt
+                  align: CENTER
+                  text: "offline"
+                  text_font: f26

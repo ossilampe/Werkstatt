@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 600" font-family="Segoe UI, Arial, sans-serif" font-size="15">
+  <rect width="1100" height="600" fill="#ffffff"/>
+  <text x="24" y="38" font-size="24" font-weight="700" fill="#111">Anschluss Testaufbau: Waveshare ESP32-S3 3,5″ ↔ ZPB30A1 (ohne Isolator)</text>
+  <text x="24" y="62" fill="#555">So läuft das Testgerät e-last-test. Nur mit potentialfreier 12-V-Versorgung der Last und potentialfreier Prüfquelle betreiben – Display per USB.</text>
+
+  <!-- Display -->
+  <rect x="40" y="100" width="330" height="330" rx="12" fill="#ECEFF1" stroke="#37474F" stroke-width="2"/>
+  <text x="205" y="128" text-anchor="middle" font-weight="700" font-size="17">Waveshare ESP32-S3-Touch-LCD-3.5</text>
+  <text x="205" y="150" text-anchor="middle" fill="#555">Stiftleiste (Pin-Nr. am Header)</text>
+  <text x="64" y="206">Pin 16 · GPIO17 (TX)</text>
+  <text x="64" y="286">Pin 18 · GPIO18 (RX)</text>
+  <text x="64" y="366">Pin 3 · GND</text>
+  <text x="64" y="410" fill="#555" font-size="13">Versorgung: USB-C 5 V</text>
+  <circle cx="350" cy="200" r="7" fill="#8E24AA"/><circle cx="350" cy="280" r="7" fill="#8E24AA"/><circle cx="350" cy="360" r="7" fill="#222"/>
+
+  <!-- Teiler -->
+  <rect x="520" y="250" width="70" height="26" rx="3" fill="#fff" stroke="#222" stroke-width="2"/>
+  <text x="555" y="268" text-anchor="middle" font-weight="700">1 kΩ</text>
+  <rect x="452" y="300" width="26" height="60" rx="3" fill="#fff" stroke="#222" stroke-width="2"/>
+  <text x="440" y="336" text-anchor="end" font-weight="700">2 kΩ</text>
+  <line x1="357" y1="280" x2="465" y2="280" stroke="#8E24AA" stroke-width="3"/>
+  <line x1="465" y1="280" x2="465" y2="300" stroke="#8E24AA" stroke-width="3"/>
+  <line x1="465" y1="360" x2="465" y2="360" stroke="#222" stroke-width="3"/>
+  <circle cx="465" cy="280" r="5" fill="#8E24AA"/>
+  <line x1="465" y1="280" x2="520" y2="263" stroke="#8E24AA" stroke-width="3"/>
+  <line x1="590" y1="263" x2="760" y2="263" stroke="#8E24AA" stroke-width="3"/>
+  <circle cx="465" cy="360" r="5" fill="#222"/>
+  <text x="600" y="250" font-size="13" fill="#8E24AA">5 V → 3,3 V</text>
+
+  <!-- Leitungen -->
+  <line x1="357" y1="200" x2="760" y2="200" stroke="#8E24AA" stroke-width="3"/>
+  <text x="560" y="190" text-anchor="middle" fill="#8E24AA">ESP-TX → R (direkt)</text>
+  <line x1="357" y1="360" x2="760" y2="360" stroke="#222" stroke-width="3"/>
+  <text x="560" y="352" text-anchor="middle">GND → G</text>
+  <text x="640" y="320" text-anchor="middle" fill="#8E24AA">T → 1 kΩ → GPIO18, 2 kΩ nach GND</text>
+
+  <!-- BUS -->
+  <rect x="760" y="100" width="300" height="330" rx="12" fill="#E8F5E9" stroke="#2E7D32" stroke-width="2"/>
+  <text x="910" y="128" text-anchor="middle" font-weight="700" font-size="17">ZPB30A1 – BUS-Leiste</text>
+  <text x="790" y="205">R  (RX der Last)</text>
+  <text x="790" y="268">T  (TX der Last, 5 V)</text>
+  <text x="790" y="365">G  (GND = Lasteingang −)</text>
+  <text x="790" y="160" fill="#C62828" font-weight="700">Vc = +12 V → frei lassen</text>
+  <text x="790" y="185" fill="#555" font-size="13">L, F → frei</text>
+  <text x="790" y="410" fill="#555" font-size="13">Last selbst: 12 V an die Hohlbuchse</text>
+
+  <!-- Hinweise -->
+  <rect x="24" y="460" width="1052" height="122" rx="8" fill="#FFFDE7" stroke="#F9A825"/>
+  <text x="40" y="486" font-weight="700">Hinweise</text>
+  <text x="40" y="510">1. Der STM8 läuft mit 5 V: sein TX-Ausgang wird mit 1 kΩ / 2 kΩ auf ca. 3,3 V geteilt, sonst nimmt der ESP32-Eingang Schaden.</text>
+  <text x="40" y="534">2. ESP-TX (3,3 V) direkt an R: liegt knapp unter der 5-V-Schwelle des STM8 (V_IH ≈ 3,5 V). Lesen klappt, Befehle sind noch nicht geprüft.</text>
+  <text x="40" y="558">3. G ist zugleich der Minus-Eingang der Last. Hängt die Last am Labornetzteil: Isolator verwenden (anschluss_endausbau.svg).</text>
+</svg>

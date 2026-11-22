@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" font-family="Segoe UI, Arial, sans-serif" font-size="14">
+  <rect width="1200" height="760" fill="#ffffff"/>
+  <text x="24" y="36" font-size="24" font-weight="700" fill="#111">Labornetzteil 0–60 V / 0–20 A · Anschlussplan</text>
+  <text x="24" y="60" fill="#555">XY6020L + Waveshare ESP32-S3-Touch-LCD-3.5 (Modbus RTU, 115200 8N1, Adresse 1) · Stand 2026-11-14</text>
+
+  <!-- Legende -->
+  <g transform="translate(860,24)">
+    <line x1="0" y1="8" x2="30" y2="8" stroke="#8B4513" stroke-width="4"/><text x="38" y="13">230 V L</text>
+    <line x1="110" y1="8" x2="140" y2="8" stroke="#1E63C8" stroke-width="4"/><text x="148" y="13">N</text>
+    <line x1="180" y1="8" x2="210" y2="8" stroke="#3BA53B" stroke-width="4" stroke-dasharray="6 3"/><text x="218" y="13">PE</text>
+    <line x1="0" y1="32" x2="30" y2="32" stroke="#D32F2F" stroke-width="5"/><text x="38" y="37">DC +</text>
+    <line x1="110" y1="32" x2="140" y2="32" stroke="#222" stroke-width="5"/><text x="148" y="37">DC −</text>
+    <line x1="180" y1="32" x2="210" y2="32" stroke="#8E24AA" stroke-width="2.5"/><text x="218" y="37">UART</text>
+  </g>
+
+  <!-- Netzbuchse -->
+  <rect x="24" y="110" width="170" height="130" rx="8" fill="#f3f3f3" stroke="#555" stroke-width="2"/>
+  <text x="109" y="134" text-anchor="middle" font-weight="700">Kaltgerätebuchse</text>
+  <text x="109" y="154" text-anchor="middle">mit Schalter + Sicherung</text>
+  <text x="109" y="174" text-anchor="middle" fill="#C62828" font-weight="700">T 10 A</text>
+  <text x="109" y="194" text-anchor="middle" fill="#555">C14, 2-polig schaltend</text>
+  <text x="109" y="226" text-anchor="middle" fill="#555" font-size="12">PE → Gehäuse (Metall)</text>
+
+  <!-- Netzteil -->
+  <rect x="270" y="90" width="230" height="200" rx="8" fill="#E8F0FB" stroke="#1E63C8" stroke-width="2"/>
+  <text x="385" y="116" text-anchor="middle" font-weight="700">Schaltnetzteil 60 V / 20 A</text>
+  <text x="385" y="136" text-anchor="middle" fill="#555">(vorhanden, 1200 W)</text>
+  <text x="290" y="170">L</text><text x="290" y="200">N</text><text x="290" y="230">PE</text>
+  <text x="470" y="170" text-anchor="end">V+</text><text x="470" y="240" text-anchor="end">V−</text>
+  <text x="385" y="272" text-anchor="middle" fill="#555" font-size="12">V-ADJ: max. 65 V (XY-Eingang ≤ 70 V)</text>
+
+  <!-- AC Leitungen -->
+  <line x1="194" y1="165" x2="282" y2="165" stroke="#8B4513" stroke-width="4"/>
+  <line x1="194" y1="195" x2="282" y2="195" stroke="#1E63C8" stroke-width="4"/>
+  <line x1="194" y1="225" x2="282" y2="225" stroke="#3BA53B" stroke-width="4" stroke-dasharray="6 3"/>
+  <text x="238" y="158" text-anchor="middle" font-size="12" fill="#555">1,5 mm²</text>
+
+  <!-- Sicherung DC -->
+  <rect x="560" y="148" width="90" height="34" rx="6" fill="#FFF3E0" stroke="#E65100" stroke-width="2"/>
+  <text x="605" y="170" text-anchor="middle" font-weight="700" fill="#E65100">25 A</text>
+  <text x="605" y="140" text-anchor="middle" font-size="12" fill="#555">KFZ-Flachsich. / Midi</text>
+  <line x1="476" y1="165" x2="560" y2="165" stroke="#D32F2F" stroke-width="5"/>
+  <line x1="650" y1="165" x2="742" y2="165" stroke="#D32F2F" stroke-width="5"/>
+  <line x1="476" y1="235" x2="742" y2="235" stroke="#222" stroke-width="5"/>
+  <text x="700" y="225" text-anchor="middle" font-size="12" fill="#555">4 mm²</text>
+
+  <!-- XY6020L -->
+  <rect x="742" y="90" width="230" height="230" rx="8" fill="#FDECEA" stroke="#D32F2F" stroke-width="2"/>
+  <text x="857" y="116" text-anchor="middle" font-weight="700">XY6020L</text>
+  <text x="857" y="136" text-anchor="middle" fill="#555">Buck 0–60 V / 0–20 A</text>
+  <text x="756" y="170">IN+</text><text x="756" y="240">IN−</text>
+  <text x="958" y="170" text-anchor="end">OUT+</text><text x="958" y="240" text-anchor="end">OUT−</text>
+  <rect x="770" y="262" width="174" height="46" rx="4" fill="#fff" stroke="#8E24AA"/>
+  <text x="857" y="280" text-anchor="middle" font-size="12" fill="#8E24AA" font-weight="700">COM (4-polig)</text>
+  <text x="857" y="298" text-anchor="middle" font-size="12" fill="#8E24AA">5V · TX · RX · GND</text>
+
+  <!-- Ausgang -->
+  <line x1="972" y1="165" x2="1080" y2="165" stroke="#D32F2F" stroke-width="5"/>
+  <line x1="972" y1="235" x2="1080" y2="235" stroke="#222" stroke-width="5"/>
+  <circle cx="1100" cy="165" r="20" fill="#D32F2F"/><text x="1100" y="171" text-anchor="middle" fill="#fff" font-weight="700">+</text>
+  <circle cx="1100" cy="235" r="20" fill="#222"/><text x="1100" y="241" text-anchor="middle" fill="#fff" font-weight="700">−</text>
+  <text x="1100" y="282" text-anchor="middle" font-size="12" fill="#555">Polklemmen 4 mm</text>
+  <text x="1100" y="298" text-anchor="middle" font-size="12" fill="#555">≥ 30 A, isoliert</text>
+  <text x="1026" y="225" text-anchor="middle" font-size="12" fill="#555">4 mm²</text>
+
+  <!-- DC-DC 5V -->
+  <rect x="560" y="380" width="200" height="110" rx="8" fill="#F1F8E9" stroke="#558B2F" stroke-width="2"/>
+  <text x="660" y="406" text-anchor="middle" font-weight="700">Step-Down → 5 V / 2–3 A</text>
+  <text x="660" y="426" text-anchor="middle" fill="#555">Eingang bis ≥ 75 V!</text>
+  <text x="660" y="446" text-anchor="middle" fill="#555" font-size="12">z. B. LM5164-/XL7015-Modul</text>
+  <text x="660" y="478" text-anchor="middle" fill="#555" font-size="12">Sicherung 1 A im Plus</text>
+  <polyline points="530,165 530,410 560,410" fill="none" stroke="#D32F2F" stroke-width="2.5"/>
+  <polyline points="515,235 515,460 560,460" fill="none" stroke="#222" stroke-width="2.5"/>
+  <circle cx="530" cy="165" r="4" fill="#D32F2F"/><circle cx="515" cy="235" r="4" fill="#222"/>
+
+  <!-- Waveshare -->
+  <rect x="270" y="380" width="230" height="250" rx="8" fill="#ECEFF1" stroke="#37474F" stroke-width="2"/>
+  <text x="385" y="406" text-anchor="middle" font-weight="700">Waveshare ESP32-S3</text>
+  <text x="385" y="426" text-anchor="middle" font-weight="700">Touch-LCD 3.5″</text>
+  <text x="385" y="452" text-anchor="middle" fill="#555">Versorgung: USB-C 5 V</text>
+  <text x="290" y="510">GPIO17 TX (Pin 16)</text>
+  <text x="290" y="540">GPIO18 RX (Pin 18)</text>
+  <text x="290" y="570">GND (Pin 3)</text>
+  <polyline points="560,440 520,440 520,446 500,446" fill="none" stroke="#558B2F" stroke-width="2.5"/>
+  <text x="530" y="436" font-size="12" fill="#558B2F">5 V</text>
+
+  <!-- UART Leitungen -->
+  <polyline points="500,505 800,505 800,308" fill="none" stroke="#8E24AA" stroke-width="2.5"/>
+  <text x="640" y="520" font-size="12" fill="#8E24AA">TX → XY RX</text>
+  <polyline points="500,535 860,535 860,308" fill="none" stroke="#8E24AA" stroke-width="2.5"/>
+  <rect x="868" y="510" width="96" height="58" rx="4" fill="#fff" stroke="#8E24AA"/>
+  <text x="916" y="528" text-anchor="middle" font-size="12" fill="#8E24AA">nur bei 5 V:</text>
+  <text x="916" y="544" text-anchor="middle" font-size="12" fill="#8E24AA">1 k in Reihe,</text>
+  <text x="916" y="560" text-anchor="middle" font-size="12" fill="#8E24AA">2 k nach GND</text>
+  <text x="640" y="550" font-size="12" fill="#8E24AA">XY TX → RX</text>
+  <polyline points="500,565 920,565 920,308" fill="none" stroke="#222" stroke-width="2.5"/>
+  <text x="640" y="580" font-size="12" fill="#555">GND (= IN−)</text>
+
+  <!-- Hinweise -->
+  <rect x="24" y="650" width="1152" height="96" rx="8" fill="#FFFDE7" stroke="#F9A825"/>
+  <text x="40" y="674" font-weight="700">Wichtig</text>
+  <text x="40" y="694" font-size="13">1. OUT− nie mit IN− oder Gehäuse verbinden (Strom-Shunt liegt dazwischen). COM-GND des XY6020L = IN−, der 5-V-Wandler hängt am selben IN−.</text>
+  <text x="40" y="712" font-size="13">2. Vor dem Anschließen TX-Pegel am XY-COM messen (Leerlauf gegen GND). 3,3 V → direkt; 5 V → Teiler 1 k / 2 k vor GPIO18. Den 5-V-Pin des XY nicht verwenden.</text>
+  <text x="40" y="730" font-size="13">3. Nicht gleichzeitig per USB am PC und mit geerdeter Last am Ausgang betreiben (Masseschleife über den Shunt). Max. Ausgang ≈ Eingang − 2 V, Leistung durch Netzteil auf ~1100 W begrenzt.</text>
+</svg>

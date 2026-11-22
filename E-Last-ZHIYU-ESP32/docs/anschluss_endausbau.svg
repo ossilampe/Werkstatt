@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 640" font-family="Segoe UI, Arial, sans-serif" font-size="15">
+  <rect width="1100" height="640" fill="#ffffff"/>
+  <text x="24" y="38" font-size="24" font-weight="700" fill="#111">Endausbau (geplant): galvanisch getrennt mit ADuM1201</text>
+  <text x="24" y="62" fill="#555">Der Isolator trennt die Massen und setzt gleichzeitig 3,3 V (ESP) auf 5 V (Last) um. Damit darf die Last an jeder Quelle hängen – auch am XY6020L-Ausgang.</text>
+
+  <!-- Trennlinie -->
+  <line x1="550" y1="90" x2="550" y2="470" stroke="#C62828" stroke-width="2" stroke-dasharray="10 6"/>
+  <text x="550" y="86" text-anchor="middle" fill="#C62828" font-weight="700">Trennung</text>
+
+  <!-- ESP -->
+  <rect x="30" y="110" width="250" height="300" rx="12" fill="#ECEFF1" stroke="#37474F" stroke-width="2"/>
+  <text x="155" y="138" text-anchor="middle" font-weight="700">ESP32-S3 (Display)</text>
+  <text x="50" y="190">3V3 (Pin 31)</text>
+  <text x="50" y="240">TX (GPIO frei wählen)</text>
+  <text x="50" y="290">RX (GPIO frei wählen)</text>
+  <text x="50" y="340">GND</text>
+  <text x="50" y="390" fill="#555" font-size="13">Labornetzteil-Masse</text>
+
+  <!-- ADuM -->
+  <rect x="400" y="130" width="300" height="270" rx="10" fill="#FFF3E0" stroke="#E65100" stroke-width="2"/>
+  <text x="550" y="158" text-anchor="middle" font-weight="700">ADuM1201 (Modul)</text>
+  <text x="414" y="190">VDD1</text><text x="414" y="240">VIA</text><text x="414" y="290">VOB</text><text x="414" y="340">GND1</text>
+  <text x="686" y="190" text-anchor="end">VDD2</text><text x="686" y="240" text-anchor="end">VOA</text><text x="686" y="290" text-anchor="end">VIB</text><text x="686" y="340" text-anchor="end">GND2</text>
+  <text x="550" y="380" text-anchor="middle" fill="#555" font-size="13">je 100 nF an VDD1 und VDD2</text>
+
+  <line x1="280" y1="185" x2="400" y2="185" stroke="#E65100" stroke-width="3"/>
+  <line x1="280" y1="235" x2="400" y2="235" stroke="#8E24AA" stroke-width="3"/>
+  <line x1="280" y1="285" x2="400" y2="285" stroke="#8E24AA" stroke-width="3"/>
+  <line x1="280" y1="335" x2="400" y2="335" stroke="#222" stroke-width="3"/>
+
+  <!-- Last -->
+  <rect x="820" y="110" width="250" height="300" rx="12" fill="#E8F5E9" stroke="#2E7D32" stroke-width="2"/>
+  <text x="945" y="138" text-anchor="middle" font-weight="700">ZPB30A1</text>
+  <text x="840" y="190">+5V-Pad (SWIM-Leiste)</text>
+  <text x="840" y="240">R (BUS)</text>
+  <text x="840" y="290">T (BUS)</text>
+  <text x="840" y="340">G (BUS)</text>
+  <text x="840" y="390" fill="#555" font-size="13">Vc = 12 V, nicht benutzen</text>
+  <line x1="700" y1="185" x2="820" y2="185" stroke="#E65100" stroke-width="3"/>
+  <line x1="700" y1="235" x2="820" y2="235" stroke="#8E24AA" stroke-width="3"/>
+  <line x1="700" y1="285" x2="820" y2="285" stroke="#8E24AA" stroke-width="3"/>
+  <line x1="700" y1="335" x2="820" y2="335" stroke="#222" stroke-width="3"/>
+
+  <!-- 12V -->
+  <rect x="820" y="430" width="250" height="60" rx="10" fill="#E3F2FD" stroke="#1565C0" stroke-width="2"/>
+  <text x="945" y="456" text-anchor="middle" font-weight="700">12-V-Netzteil, potentialfrei</text>
+  <text x="945" y="478" text-anchor="middle" font-size="13">nur für die Last (≥ 1 A), Hohlbuchse</text>
+
+  <rect x="24" y="510" width="1052" height="112" rx="8" fill="#FFFDE7" stroke="#F9A825"/>
+  <text x="40" y="536" font-weight="700">Warum die Trennung?</text>
+  <text x="40" y="560">G der Last ist ihr Minus-Eingang. Hängt die Last am XY6020L, würde eine direkte Masseverbindung zum ESP OUT− mit IN− des XY verbinden</text>
+  <text x="40" y="584">und dessen Strom-Shunt überbrücken – Strommessung und Strombegrenzung des Netzteils wären dann falsch.</text>
+  <text x="40" y="608">Die 12-V-Hilfsversorgung der Last darf deshalb auch nicht aus dem Labornetzteil kommen.</text>
+</svg>

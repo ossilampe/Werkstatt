@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" font-family="Segoe UI, Arial, sans-serif" font-size="15">
+  <rect width="1000" height="560" fill="#ffffff"/>
+  <text x="24" y="38" font-size="24" font-weight="700" fill="#111">ST-Link V2 (Klon) → SWIM-Pads der ZPB30A1</text>
+  <text x="24" y="62" fill="#555">Nur die ungerade Reihe des Sticks wird benutzt. Maßgeblich ist der Aufdruck auf dem Stick, nicht die Nummerierung aus anderen Anleitungen.</text>
+
+  <!-- ST-Link Stecker -->
+  <rect x="40" y="100" width="300" height="320" rx="12" fill="#1E4FA8"/>
+  <text x="190" y="130" text-anchor="middle" fill="#fff" font-weight="700" font-size="18">ST-LINK V2 – Stiftleiste</text>
+  <g font-size="14" fill="#fff">
+    <!-- Reihe ungerade links, gerade rechts -->
+    <g>
+      <circle cx="230" cy="170" r="16" fill="#FFD600"/><text x="230" y="175" text-anchor="middle" fill="#000" font-weight="700">1</text>
+      <text x="206" y="175" text-anchor="end">RST</text>
+      <circle cx="130" cy="170" r="16" fill="#90A4AE"/><text x="130" y="175" text-anchor="middle" fill="#000">2</text>
+      <text x="104" text-anchor="end" y="175">SWCLK</text>
+
+      <circle cx="230" cy="220" r="16" fill="#43A047"/><text x="230" y="225" text-anchor="middle" fill="#fff" font-weight="700">3</text>
+      <text x="206" y="225" text-anchor="end">SWIM</text>
+      <circle cx="130" cy="220" r="16" fill="#90A4AE"/><text x="130" y="225" text-anchor="middle" fill="#000">4</text>
+      <text x="104" text-anchor="end" y="225">SWDIO</text>
+
+      <circle cx="230" cy="270" r="16" fill="#212121" stroke="#fff"/><text x="230" y="275" text-anchor="middle" fill="#fff" font-weight="700">5</text>
+      <text x="206" y="275" text-anchor="end">GND</text>
+      <circle cx="130" cy="270" r="16" fill="#90A4AE"/><text x="130" y="275" text-anchor="middle" fill="#000">6</text>
+      <text x="104" text-anchor="end" y="275">GND</text>
+
+      <circle cx="230" cy="320" r="16" fill="#90A4AE"/><text x="230" y="325" text-anchor="middle" fill="#000">7</text>
+      <text x="206" y="325" text-anchor="end">3.3V</text>
+      <circle cx="130" cy="320" r="16" fill="#90A4AE"/><text x="130" y="325" text-anchor="middle" fill="#000">8</text>
+      <text x="104" text-anchor="end" y="325">3.3V</text>
+
+      <circle cx="230" cy="370" r="16" fill="#E53935"/><text x="230" y="375" text-anchor="middle" fill="#fff" font-weight="700">9</text>
+      <text x="206" y="375" text-anchor="end">5.0V</text>
+      <circle cx="130" cy="370" r="16" fill="#90A4AE"/><text x="130" y="375" text-anchor="middle" fill="#000">10</text>
+      <text x="104" text-anchor="end" y="375">5.0V</text>
+    </g>
+  </g>
+  <text x="190" y="408" text-anchor="middle" fill="#BBDEFB" font-size="13">grau = nicht benutzt</text>
+
+  <!-- Leitungen -->
+  <polyline points="246,170 470,170 470,220 700,220" fill="none" stroke="#FBC02D" stroke-width="5"/>
+  <polyline points="246,220 450,220 450,260 760,260" fill="none" stroke="#43A047" stroke-width="5"/>
+  <polyline points="246,270 430,270 430,180 640,180" fill="none" stroke="#212121" stroke-width="5"/>
+  <polyline points="246,370 490,370 490,300 820,300" fill="none" stroke="#E53935" stroke-width="5"/>
+
+  <!-- Pads -->
+  <rect x="600" y="140" width="290" height="190" rx="12" fill="#2E7D32"/>
+  <text x="745" y="166" text-anchor="middle" fill="#fff" font-weight="700" font-size="17">ZPB30A1 – 4 Pads unter dem Chip</text>
+  <g font-size="14" font-weight="700">
+    <rect x="626" y="190" width="28" height="28" fill="#FFD54F"/><text x="640" y="245" text-anchor="middle" fill="#fff">GND</text>
+    <rect x="686" y="190" width="28" height="28" fill="#FFD54F"/><text x="700" y="245" text-anchor="middle" fill="#fff">RST</text>
+    <rect x="746" y="190" width="28" height="28" fill="#FFD54F"/><text x="760" y="245" text-anchor="middle" fill="#fff">SWIM</text>
+    <rect x="806" y="190" width="28" height="28" fill="#FFD54F"/><text x="820" y="245" text-anchor="middle" fill="#fff">+5V</text>
+  </g>
+  <line x1="640" y1="180" x2="640" y2="190" stroke="#212121" stroke-width="5"/>
+  <line x1="700" y1="220" x2="700" y2="218" stroke="#FBC02D" stroke-width="5"/>
+  <line x1="760" y1="260" x2="760" y2="218" stroke="#43A047" stroke-width="5"/>
+  <line x1="820" y1="300" x2="820" y2="218" stroke="#E53935" stroke-width="5"/>
+  <text x="745" y="312" text-anchor="middle" fill="#C8E6C9" font-size="13">Reihenfolge laut Aufdruck links → rechts</text>
+
+  <!-- Tabelle -->
+  <g transform="translate(40,450)" font-size="15">
+    <rect width="920" height="96" rx="8" fill="#FFFDE7" stroke="#F9A825"/>
+    <text x="16" y="26" font-weight="700">Beim Flashen:</text>
+    <text x="16" y="50">• Anzeigeplatine abziehen  • keine 12 V an der Last  • nichts am Lasteingang – der ST-Link versorgt den Chip mit 5 V.</text>
+    <text x="16" y="74">• 3.3V (Pin 7/8) und die SWD-Pins (2/4) bleiben frei. Klone mit anderer Belegung gibt es – immer nach Aufdruck stecken.</text>
+  </g>
+</svg>
