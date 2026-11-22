@@ -8,4 +8,6 @@ Eigene Geräte und Platinen für die Werkstatt, mit Schaltplan, Platinendaten un
 | [T12-Station-1-Kolben](T12-Station-1-Kolben) | wie oben, 1 × T12-Steuerplatine | dieselbe Station für einen Kolben | Konfiguration fertig, Gehäuse wie 2 Kolben |
 | [T12-Loetstation](T12-Loetstation) | Waveshare ESP32-S3 Touch-LCD 3,5″ + eigene Platine (KiCad, JLCPCB) | erster Entwurf mit eigener Platine für 2 Kolben | Platine v1.1 fertig, pausiert |
 
+**Gehäuse der T12-Station zum Drucken:** [MakerWorld](https://makerworld.com/de/models/3663781-t12-lotstation-esp32-s3-touch-display-2-kolben)
+
 **Hinweis:** WLAN-Daten und Passwörter kommen per `!secret` aus der eigenen `secrets.yaml`. Eine Vorlage liegt jeweils als `secrets.yaml.example` im Projektordner.

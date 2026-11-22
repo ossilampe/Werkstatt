@@ -302,6 +302,7 @@ Eigenes 3D-Druck-Gehäuse (Fusion 360), 250 mm breit: schräge Front mit Display
 |---|---|
 | ![Station](gehaeuse/bilder/foto_station.jpg) | ![Render](gehaeuse/bilder/render_seite.png) |
 
+- **MakerWorld:** [T12-Lötstation ESP32-S3 Touch-Display, 2 Kolben](https://makerworld.com/de/models/3663781-t12-lotstation-esp32-s3-touch-display-2-kolben) – Druckdateien, Fotos und Anleitung
 - **Druckdateien:** [`Frame_unten.stl`](gehaeuse/stl/Frame_unten.stl), [`Frame_oben.stl`](gehaeuse/stl/Frame_oben.stl), [`Front.stl`](gehaeuse/stl/Front.stl), [`Drehknopf.stl`](gehaeuse/stl/Drehknopf.stl)
 - **Zum Ändern:** [`Loetstation_ESP32_Touch_3_5zoll.f3d`](gehaeuse/fusion/Loetstation_ESP32_Touch_3_5zoll.f3d) (Fusion 360)
 - Druckbett mindestens 256 mm (z. B. Bambu Lab X1C / P1S), Material PETG oder ASA empfohlen. Details: [Gehäuse-README](gehaeuse/README.md)

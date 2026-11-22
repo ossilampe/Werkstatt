@@ -10,6 +10,8 @@
 |---|---|---|
 | ![vorne](bilder/render_vorne.png) | ![seitlich](bilder/render_seite.png) | ![hinten](bilder/render_hinten.png) |
 
+**Auf MakerWorld:** [T12-Lötstation ESP32-S3 Touch-Display, 2 Kolben](https://makerworld.com/de/models/3663781-t12-lotstation-esp32-s3-touch-display-2-kolben)
+
 ## Dateien
 
 | Datei | Teil | Größe (B × H × T) |

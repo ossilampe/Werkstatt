@@ -149,7 +149,7 @@ def main():
 <p class="unter">ESP32-S3 (Waveshare 3,5″) + fertige T12-Steuerplatinen (STM32 Ver21S) mit eigener Firmware</p>
 <img src="%s">
 <p class="unter2">Bauanleitung: Umbau und Flashen der Module · Verdrahtung · ESPHome · Spitzenprofile · Menüs · Gehäuse</p>
-<p class="quelle">Alle Dateien: <a href="%sT12-Station-2-Kolben">github.com/ossilampe/Werkstatt</a> · Stand 22.11.2026</p>
+<p class="quelle">Alle Dateien: <a href="%sT12-Station-2-Kolben">github.com/ossilampe/Werkstatt</a> · <a href="https://makerworld.com/de/models/3663781-t12-lotstation-esp32-s3-touch-display-2-kolben">MakerWorld</a> · Stand 22.11.2026</p>
 </div>""" % (datei_url(os.path.join(PROJ, "gehaeuse", "bilder", "foto_front.jpg")), GITHUB_ROOT)
 
     css = """
