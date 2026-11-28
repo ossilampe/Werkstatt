@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=Mikroskop
+Exec=python3 /home/pi/mikroskop/mikroskop.py
+X-GNOME-Autostart-enabled=true

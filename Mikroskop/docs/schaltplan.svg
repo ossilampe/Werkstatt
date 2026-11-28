@@ -1,0 +1,177 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='1100' height='720' viewBox='0 0 1100 720'>
+<rect width='1100' height='720' fill='white'/>
+<text x='550.0' y='30' font-size='22' text-anchor='middle' fill='#222' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>Digitales Mikroskop – Verdrahtung</text>
+<rect x='40' y='60' width='170' height='70' rx='8' fill='#fdf2d0' stroke='#333' stroke-width='2'/>
+<text x='125' y='90' font-size='15' text-anchor='middle' fill='#222' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>Netzteil</text>
+<text x='125' y='112' font-size='13' text-anchor='middle' fill='#222' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>USB-C 5,1 V / 3 A</text>
+<rect x='40' y='165' width='170' height='95' rx='8' fill='#e3e9f5' stroke='#333' stroke-width='2'/>
+<text x='125' y='195' font-size='15' text-anchor='middle' fill='#222' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>HQ-Kamera</text>
+<text x='125' y='217' font-size='13' text-anchor='middle' fill='#222' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>IMX477, 12,3 MP</text>
+<text x='125' y='237' font-size='13' text-anchor='middle' fill='#222' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>+ Mikroskop-Objektiv</text>
+<rect x='330' y='55' width='330' height='210' rx='8' fill='#2e7d4f' stroke='#1d5234' stroke-width='2'/>
+<text x='495' y='155' font-size='20' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>Raspberry Pi 4</text>
+<rect x='380' y='64' width='230' height='26' rx='3' fill='#1a1a1a' stroke='#000' stroke-width='2'/>
+<circle cx='388.0' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='388.0' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='399.3' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='399.3' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='410.6' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='410.6' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='421.9' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='421.9' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='433.2' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='433.2' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='444.5' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='444.5' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='455.8' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='455.8' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='467.1' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='467.1' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='478.4' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='478.4' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='489.7' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='489.7' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='501.0' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='501.0' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='512.3' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='512.3' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='523.6' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='523.6' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='534.9' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='534.9' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='546.2' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='546.2' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='557.5' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='557.5' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='568.8' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='568.8' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='580.1' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='580.1' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='591.4' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='591.4' cy='83' r='2.6' fill='#d4af37'/>
+<circle cx='602.7' cy='71' r='2.6' fill='#d4af37'/>
+<circle cx='602.7' cy='83' r='2.6' fill='#d4af37'/>
+<text x='495' y='108' font-size='12' text-anchor='middle' fill='white' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>40-Pin GPIO (Pin 1 links)</text>
+<rect x='320' y='80' width='22' height='34' rx='3' fill='#bbb' stroke='#555' stroke-width='2'/>
+<text x='350' y='102' font-size='11' text-anchor='start' fill='white' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>USB-C</text>
+<rect x='395' y='200' width='60' height='14' rx='2' fill='#f0f0f0' stroke='#555' stroke-width='2'/>
+<text x='425' y='232' font-size='11' text-anchor='middle' fill='white' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>CAMERA (CSI)</text>
+<rect x='600' y='150' width='14' height='60' rx='2' fill='#f0f0f0' stroke='#555' stroke-width='2'/>
+<text x='590' y='245' font-size='11' text-anchor='end' fill='white' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>DISPLAY (DSI)</text>
+<rect x='810' y='55' width='250' height='150' rx='8' fill='#222' stroke='#000' stroke-width='2'/>
+<rect x='825' y='68' width='220' height='124' rx='3' fill='#3d5a80' stroke='#3d5a80' stroke-width='2'/>
+<text x='935' y='125' font-size='16' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>7" Touch Display</text>
+<text x='935' y='147' font-size='13' text-anchor='middle' fill='white' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>800 × 480, DSI</text>
+<rect x='880' y='205' width='110' height='26' rx='4' fill='#2e7d4f' stroke='#1d5234' stroke-width='2'/>
+<text x='935' y='223' font-size='11' text-anchor='middle' fill='white' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>Adapterplatine</text>
+<polyline points='210,97 320,97' fill='none' stroke='#c0392b' stroke-width='4' stroke-linejoin='round' stroke-linecap='round'/>
+<polyline points='210,212 300,212 300,207 395,207' fill='none' stroke='#e67e22' stroke-width='8' stroke-linejoin='round' stroke-linecap='round'/>
+<text x='255' y='198' font-size='11' text-anchor='middle' fill='#e67e22' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>Flachband CSI</text>
+<polyline points='614,180 760,180 760,218 880,218' fill='none' stroke='#e67e22' stroke-width='8' stroke-linejoin='round' stroke-linecap='round'/>
+<text x='705' y='170' font-size='11' text-anchor='middle' fill='#e67e22' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>Flachband DSI</text>
+<text x='550' y='305' font-size='14' text-anchor='middle' fill='#222' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>GPIO-Leiste (Draufsicht, Pins 1–20)</text>
+<rect x='510' y='312' width='80' height='340' rx='4' fill='#1a1a1a' stroke='#000' stroke-width='2'/>
+<circle cx='530' cy='330' r='12' fill='#e67e22' stroke='#000' stroke-width='1'/>
+<text x='530' y='334' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>1</text>
+<text x='500' y='335' font-size='13' text-anchor='end' fill='#999' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>3V3</text>
+<circle cx='570' cy='330' r='12' fill='#c0392b' stroke='#f1c40f' stroke-width='3'/>
+<text x='570' y='334' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>2</text>
+<text x='600' y='335' font-size='13' text-anchor='start' fill='#222' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>5V</text>
+<circle cx='530' cy='364' r='12' fill='#27ae60' stroke='#000' stroke-width='1'/>
+<text x='530' y='368' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>3</text>
+<text x='500' y='369' font-size='13' text-anchor='end' fill='#999' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>GPIO2</text>
+<circle cx='570' cy='364' r='12' fill='#c0392b' stroke='#000' stroke-width='1'/>
+<text x='570' y='368' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>4</text>
+<text x='600' y='369' font-size='13' text-anchor='start' fill='#999' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>5V</text>
+<circle cx='530' cy='398' r='12' fill='#27ae60' stroke='#000' stroke-width='1'/>
+<text x='530' y='402' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>5</text>
+<text x='500' y='403' font-size='13' text-anchor='end' fill='#999' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>GPIO3</text>
+<circle cx='570' cy='398' r='12' fill='#555' stroke='#f1c40f' stroke-width='3'/>
+<text x='570' y='402' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>6</text>
+<text x='600' y='403' font-size='13' text-anchor='start' fill='#222' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>GND</text>
+<circle cx='530' cy='432' r='12' fill='#27ae60' stroke='#000' stroke-width='1'/>
+<text x='530' y='436' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>7</text>
+<text x='500' y='437' font-size='13' text-anchor='end' fill='#999' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>GPIO4</text>
+<circle cx='570' cy='432' r='12' fill='#27ae60' stroke='#000' stroke-width='1'/>
+<text x='570' y='436' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>8</text>
+<text x='600' y='437' font-size='13' text-anchor='start' fill='#999' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>GPIO14</text>
+<circle cx='530' cy='466' r='12' fill='#555' stroke='#f1c40f' stroke-width='3'/>
+<text x='530' y='470' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>9</text>
+<text x='500' y='471' font-size='13' text-anchor='end' fill='#222' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>GND</text>
+<circle cx='570' cy='466' r='12' fill='#27ae60' stroke='#000' stroke-width='1'/>
+<text x='570' y='470' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>10</text>
+<text x='600' y='471' font-size='13' text-anchor='start' fill='#999' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>GPIO15</text>
+<circle cx='530' cy='500' r='12' fill='#27ae60' stroke='#f1c40f' stroke-width='3'/>
+<text x='530' y='504' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>11</text>
+<text x='500' y='505' font-size='13' text-anchor='end' fill='#222' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>GPIO17</text>
+<circle cx='570' cy='500' r='12' fill='#27ae60' stroke='#000' stroke-width='1'/>
+<text x='570' y='504' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>12</text>
+<text x='600' y='505' font-size='13' text-anchor='start' fill='#999' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>GPIO18</text>
+<circle cx='530' cy='534' r='12' fill='#27ae60' stroke='#f1c40f' stroke-width='3'/>
+<text x='530' y='538' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>13</text>
+<text x='500' y='539' font-size='13' text-anchor='end' fill='#222' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>GPIO27</text>
+<circle cx='570' cy='534' r='12' fill='#555' stroke='#f1c40f' stroke-width='3'/>
+<text x='570' y='538' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>14</text>
+<text x='600' y='539' font-size='13' text-anchor='start' fill='#222' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>GND</text>
+<circle cx='530' cy='568' r='12' fill='#27ae60' stroke='#f1c40f' stroke-width='3'/>
+<text x='530' y='572' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>15</text>
+<text x='500' y='573' font-size='13' text-anchor='end' fill='#222' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>GPIO22</text>
+<circle cx='570' cy='568' r='12' fill='#27ae60' stroke='#f1c40f' stroke-width='3'/>
+<text x='570' y='572' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>16</text>
+<text x='600' y='573' font-size='13' text-anchor='start' fill='#222' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>GPIO23</text>
+<circle cx='530' cy='602' r='12' fill='#e67e22' stroke='#000' stroke-width='1'/>
+<text x='530' y='606' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>17</text>
+<text x='500' y='607' font-size='13' text-anchor='end' fill='#999' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>3V3</text>
+<circle cx='570' cy='602' r='12' fill='#27ae60' stroke='#000' stroke-width='1'/>
+<text x='570' y='606' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>18</text>
+<text x='600' y='607' font-size='13' text-anchor='start' fill='#999' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>GPIO24</text>
+<circle cx='530' cy='636' r='12' fill='#27ae60' stroke='#000' stroke-width='1'/>
+<text x='530' y='640' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>19</text>
+<text x='500' y='641' font-size='13' text-anchor='end' fill='#999' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>GPIO10</text>
+<circle cx='570' cy='636' r='12' fill='#555' stroke='#000' stroke-width='1'/>
+<text x='570' y='640' font-size='10' text-anchor='middle' fill='white' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>20</text>
+<text x='600' y='641' font-size='13' text-anchor='start' fill='#999' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>GND</text>
+<polyline points='440,466 140,466' fill='none' stroke='#555' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/>
+<polyline points='140,466 140,568' fill='none' stroke='#555' stroke-width='3' stroke-linejoin='round' stroke-linecap='round'/>
+<polyline points='440,500 300,500' fill='none' stroke='#27ae60' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/>
+<circle cx='250' cy='500' r='4' fill='white' stroke='#222' stroke-width='2'/><circle cx='300' cy='500' r='4' fill='white' stroke='#222' stroke-width='2'/><polyline points='248,490 302,490' fill='none' stroke='#222' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/><polyline points='275.0,490 275.0,480' fill='none' stroke='#222' stroke-width='2' stroke-linejoin='round' stroke-linecap='round'/><polyline points='268.0,480 282.0,480' fill='none' stroke='#222' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/>
+<polyline points='250,500 140,500' fill='none' stroke='#555' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/>
+<circle cx='140' cy='500' r='4' fill='#222'/>
+<text x='128' y='505' font-size='14' text-anchor='end' fill='#222' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>Zoom +</text>
+<polyline points='440,534 300,534' fill='none' stroke='#27ae60' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/>
+<circle cx='250' cy='534' r='4' fill='white' stroke='#222' stroke-width='2'/><circle cx='300' cy='534' r='4' fill='white' stroke='#222' stroke-width='2'/><polyline points='248,524 302,524' fill='none' stroke='#222' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/><polyline points='275.0,524 275.0,514' fill='none' stroke='#222' stroke-width='2' stroke-linejoin='round' stroke-linecap='round'/><polyline points='268.0,514 282.0,514' fill='none' stroke='#222' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/>
+<polyline points='250,534 140,534' fill='none' stroke='#555' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/>
+<circle cx='140' cy='534' r='4' fill='#222'/>
+<text x='128' y='539' font-size='14' text-anchor='end' fill='#222' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>Zoom −</text>
+<polyline points='440,568 300,568' fill='none' stroke='#27ae60' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/>
+<circle cx='250' cy='568' r='4' fill='white' stroke='#222' stroke-width='2'/><circle cx='300' cy='568' r='4' fill='white' stroke='#222' stroke-width='2'/><polyline points='248,558 302,558' fill='none' stroke='#222' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/><polyline points='275.0,558 275.0,548' fill='none' stroke='#222' stroke-width='2' stroke-linejoin='round' stroke-linecap='round'/><polyline points='268.0,548 282.0,548' fill='none' stroke='#222' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/>
+<polyline points='250,568 140,568' fill='none' stroke='#555' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/>
+<circle cx='140' cy='568' r='4' fill='#222'/>
+<text x='128' y='573' font-size='14' text-anchor='end' fill='#222' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>Foto</text>
+<circle cx='140' cy='466' r='4' fill='#222'/>
+<text x='128' y='471' font-size='13' text-anchor='end' fill='#555' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>GND</text>
+<text x='275' y='602' font-size='12' text-anchor='middle' fill='#555' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>Taster S1–S3 (Schließer)</text>
+<polyline points='660,568 800,568' fill='none' stroke='#27ae60' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/>
+<circle cx='800' cy='568' r='4' fill='white' stroke='#222' stroke-width='2'/><circle cx='850' cy='568' r='4' fill='white' stroke='#222' stroke-width='2'/><polyline points='798,558 852,558' fill='none' stroke='#222' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/><polyline points='825.0,558 825.0,548' fill='none' stroke='#222' stroke-width='2' stroke-linejoin='round' stroke-linecap='round'/><polyline points='818.0,548 832.0,548' fill='none' stroke='#222' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/>
+<polyline points='850,568 940,568 940,534 660,534' fill='none' stroke='#555' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/>
+<circle cx='940' cy='568' r='4' fill='#222'/>
+<text x='952' y='573' font-size='14' text-anchor='start' fill='#222' font-weight='bold' font-family='DejaVu Sans, Arial, sans-serif'>Reset 1:1</text>
+<text x='825' y='602' font-size='12' text-anchor='middle' fill='#555' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>Taster S4</text>
+<polyline points='650,330 1010,330 1010,231' fill='none' stroke='#c0392b' stroke-width='3' stroke-linejoin='round' stroke-linecap='round'/>
+<polyline points='660,398 1040,398 1040,231 990,231 990,226' fill='none' stroke='#333' stroke-width='3' stroke-linejoin='round' stroke-linecap='round'/>
+<polyline points='1010,231 1010,226' fill='none' stroke='#c0392b' stroke-width='3' stroke-linejoin='round' stroke-linecap='round'/>
+<text x='1025' y='322' font-size='12' text-anchor='end' fill='#c0392b' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>5V → Display</text>
+<text x='1040' y='390' font-size='12' text-anchor='end' fill='#333' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>GND → Display</text>
+<text x='895' y='262' font-size='11' text-anchor='middle' fill='#555' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>Jumper 5V/GND (nur falls Display</text>
+<text x='895' y='277' font-size='11' text-anchor='middle' fill='#555' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>nicht separat per USB versorgt)</text>
+<polyline points='40,670 900,670' fill='none' stroke='#ddd' stroke-width='1' stroke-linejoin='round' stroke-linecap='round'/>
+<rect x='40' y='684' width='22' height='10' fill='#27ae60'/>
+<text x='70' y='694' font-size='12' text-anchor='start' fill='#222' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>GPIO (Eingang, interner Pull-up)</text>
+<rect x='300' y='684' width='22' height='10' fill='#555'/>
+<text x='330' y='694' font-size='12' text-anchor='start' fill='#222' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>GND</text>
+<rect x='560' y='684' width='22' height='10' fill='#c0392b'/>
+<text x='590' y='694' font-size='12' text-anchor='start' fill='#222' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>5 V</text>
+<rect x='820' y='684' width='22' height='10' fill='#e67e22'/>
+<text x='850' y='694' font-size='12' text-anchor='start' fill='#222' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>Flachbandkabel</text>
+<text x='40' y='716' font-size='12' text-anchor='start' fill='#555' font-weight='normal' font-family='DejaVu Sans, Arial, sans-serif'>Keine Widerstände nötig: die Software schaltet die internen Pull-ups ein. Taster drücken = Pin wird auf GND gezogen.</text>
+</svg>
